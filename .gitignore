@@ -27,3 +27,6 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Streamlit secrets (ne jamais commit!)
+.streamlit/secrets.toml

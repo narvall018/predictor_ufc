@@ -14,17 +14,125 @@ import plotly.express as px
 from bs4 import BeautifulSoup
 import subprocess
 import time
+import base64
+import io
+
+# ============================================================================
+# CONFIGURATION GITHUB (pour Streamlit Cloud)
+# ============================================================================
+
+def get_github_config():
+    """Récupère la config GitHub depuis les secrets Streamlit"""
+    try:
+        return {
+            "token": st.secrets.get("GITHUB_TOKEN", ""),
+            "repo": st.secrets.get("GITHUB_REPO", ""),
+            "enabled": bool(st.secrets.get("GITHUB_TOKEN", ""))
+        }
+    except:
+        return {"token": "", "repo": "", "enabled": False}
+
+def github_api_request(method, endpoint, data=None, github_config=None):
+    """Effectue une requête à l'API GitHub"""
+    if not github_config or not github_config.get("enabled"):
+        return None
+    
+    import urllib.request
+    import urllib.error
+    
+    url = f"https://api.github.com/repos/{github_config['repo']}/{endpoint}"
+    headers = {
+        "Authorization": f"token {github_config['token']}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "UFC-Predictor-App"
+    }
+    
+    try:
+        if data:
+            data = json.dumps(data).encode('utf-8')
+            headers["Content-Type"] = "application/json"
+        
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        st.warning(f"GitHub API error: {e.code}")
+        return None
+    except Exception as e:
+        st.warning(f"GitHub connection error: {e}")
+        return None
+
+def load_file_from_github(file_path, github_config):
+    """Charge un fichier depuis GitHub"""
+    if not github_config.get("enabled"):
+        return None, None
+    
+    result = github_api_request("GET", f"contents/{file_path}", github_config=github_config)
+    if result and "content" in result:
+        content = base64.b64decode(result["content"])
+        sha = result.get("sha")
+        return content, sha
+    return None, None
+
+def save_file_to_github(file_path, content, message, github_config, sha=None):
+    """Sauvegarde un fichier sur GitHub"""
+    if not github_config.get("enabled"):
+        return False
+    
+    if isinstance(content, (pd.DataFrame,)):
+        buffer = io.BytesIO()
+        content.to_parquet(buffer, index=False)
+        content = buffer.getvalue()
+    elif isinstance(content, str):
+        content = content.encode('utf-8')
+    
+    data = {
+        "message": message,
+        "content": base64.b64encode(content).decode('utf-8'),
+        "branch": "main"
+    }
+    
+    if sha:
+        data["sha"] = sha
+    
+    result = github_api_request("PUT", f"contents/{file_path}", data=data, github_config=github_config)
+    return result is not None
+
+def load_parquet_from_github(file_path, github_config):
+    """Charge un fichier parquet depuis GitHub"""
+    content, sha = load_file_from_github(file_path, github_config)
+    if content:
+        try:
+            return pd.read_parquet(io.BytesIO(content)), sha
+        except:
+            pass
+    return None, None
+
+def load_csv_from_github(file_path, github_config):
+    """Charge un fichier CSV depuis GitHub"""
+    content, sha = load_file_from_github(file_path, github_config)
+    if content:
+        try:
+            return pd.read_csv(io.BytesIO(content)), sha
+        except:
+            pass
+    return None, None
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
 st.set_page_config(
-    page_title="Combat Sports Betting App",
+    page_title="UFC Betting Predictor",
     page_icon="🥊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Config GitHub
+GITHUB_CONFIG = get_github_config()
 
 # Chemins
 DATA_DIR = Path("data")
@@ -42,14 +150,13 @@ BASE_ELO = 1500.0
 
 # ✅ STRATÉGIES DE PARIS OPTIMISÉES (Sans Data Leakage)
 BETTING_STRATEGIES = {
-    # 🏆 STRATÉGIE PAR DÉFAUT - Validée sur ≥20 paris TEST avec ROI correct
     "REALISTIC (RECOMMANDÉE)": {
         "kelly_fraction": 10,
-        "min_confidence": 0.60,      # Confiance modèle ≥ 60%
-        "min_edge": 0.10,            # Edge ≥ 10%
-        "max_value": 0.50,           # EV max: 50% (éviter valeurs suspectes)
-        "min_odds": 1.20,            # Odds min: 1.20
-        "max_odds": 3.0,             # Odds max: 3.0
+        "min_confidence": 0.60,
+        "min_edge": 0.10,
+        "max_value": 0.50,
+        "min_odds": 1.20,
+        "max_odds": 3.0,
         "max_bet_fraction": 0.05,
         "min_bet_pct": 0.01,
         "description": "🏆 RECOMMANDÉE - ROI +20.8% TRAIN, +50% TEST (25 paris TEST, Edge≥10%, EV max 50%)"
@@ -89,7 +196,6 @@ BETTING_STRATEGIES = {
     },
 }
 
-# ============================================================================
 # STYLES CSS
 # ============================================================================
 
@@ -1252,8 +1358,14 @@ def extract_fights_from_event(event_url):
 # ============================================================================
 
 def init_bankroll():
-    """Initialise la bankroll"""
+    """Initialise la bankroll (avec support GitHub pour Streamlit Cloud)"""
     bankroll_file = BETS_DIR / "bankroll.csv"
+    
+    if GITHUB_CONFIG.get("enabled"):
+        df, sha = load_csv_from_github("bets/bankroll.csv", GITHUB_CONFIG)
+        if df is not None and not df.empty:
+            df.to_csv(bankroll_file, index=False)
+            return float(df.iloc[-1]["amount"])
     
     if bankroll_file.exists():
         df = pd.read_csv(bankroll_file)
@@ -1267,13 +1379,23 @@ def init_bankroll():
         "note": ["Bankroll initiale"]
     })
     df.to_csv(bankroll_file, index=False)
+    
+    if GITHUB_CONFIG.get("enabled"):
+        save_file_to_github("bets/bankroll.csv", df.to_csv(index=False), 
+                           "Init bankroll", GITHUB_CONFIG)
+    
     return 1000.0
 
 def update_bankroll(new_amount, action="update", note=""):
-    """Met à jour la bankroll"""
+    """Met a jour la bankroll (avec sync GitHub)"""
     bankroll_file = BETS_DIR / "bankroll.csv"
+    sha = None
     
-    if bankroll_file.exists():
+    if GITHUB_CONFIG.get("enabled"):
+        df, sha = load_csv_from_github("bets/bankroll.csv", GITHUB_CONFIG)
+        if df is None:
+            df = pd.DataFrame(columns=["date", "amount", "action", "note"])
+    elif bankroll_file.exists():
         df = pd.read_csv(bankroll_file)
     else:
         df = pd.DataFrame(columns=["date", "amount", "action", "note"])
@@ -1288,16 +1410,32 @@ def update_bankroll(new_amount, action="update", note=""):
     df = pd.concat([df, new_entry], ignore_index=True)
     df.to_csv(bankroll_file, index=False)
     
+    if GITHUB_CONFIG.get("enabled"):
+        save_file_to_github("bets/bankroll.csv", df.to_csv(index=False),
+                           f"Update bankroll: {action}", GITHUB_CONFIG, sha)
+    
     return new_amount
 
 def add_bet(event_name, fighter_red, fighter_blue, pick, odds, stake, 
             model_probability, kelly_fraction, edge, ev):
-    """Ajoute un pari à l'historique"""
+    """Ajoute un pari (avec sync GitHub)"""
     bets_file = BETS_DIR / "bets.csv"
+    sha = None
     
-    if bets_file.exists():
+    if GITHUB_CONFIG.get("enabled"):
+        df, sha = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+        if df is not None and not df.empty:
+            next_id = int(df["bet_id"].max()) + 1
+        else:
+            df = pd.DataFrame(columns=[
+                "bet_id", "date", "event", "fighter_red", "fighter_blue",
+                "pick", "odds", "stake", "model_probability", "kelly_fraction",
+                "edge", "ev", "status", "result", "profit", "roi"
+            ])
+            next_id = 1
+    elif bets_file.exists():
         df = pd.read_csv(bets_file)
-        next_id = df["bet_id"].max() + 1 if not df.empty else 1
+        next_id = int(df["bet_id"].max()) + 1 if not df.empty else 1
     else:
         df = pd.DataFrame(columns=[
             "bet_id", "date", "event", "fighter_red", "fighter_blue",
@@ -1327,6 +1465,10 @@ def add_bet(event_name, fighter_red, fighter_blue, pick, odds, stake,
     
     df = pd.concat([df, new_bet], ignore_index=True)
     df.to_csv(bets_file, index=False)
+    
+    if GITHUB_CONFIG.get("enabled"):
+        save_file_to_github("bets/bets.csv", df.to_csv(index=False),
+                           f"Add bet: {pick} @ {odds}", GITHUB_CONFIG, sha)
     
     return True
 

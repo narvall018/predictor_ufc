@@ -9,7 +9,27 @@ Application de prédiction de paris UFC basée sur un modèle ML sans data leaka
 - **ROI TEST**: +50% (25 paris)
 - **Combattants**: 2075+
 
-## 🚀 Installation
+## 🚀 Déploiement sur Streamlit Cloud
+
+### 1. Fork/Clone ce repo sur GitHub
+
+### 2. Configurer Streamlit Cloud
+1. Aller sur [share.streamlit.io](https://share.streamlit.io)
+2. Connecter votre repo GitHub
+3. Dans **Settings > Secrets**, ajouter :
+
+```toml
+GITHUB_TOKEN = "github_pat_VOTRE_TOKEN"
+GITHUB_REPO = "votre-username/predictor_ufc"
+```
+
+### 3. Créer un GitHub Personal Access Token
+1. GitHub > Settings > Developer settings > Personal access tokens > Fine-grained tokens
+2. Créer un token avec les permissions:
+   - **Contents**: Read and write (pour sauvegarder les paris)
+3. Copier le token dans les secrets Streamlit
+
+## 💻 Installation locale
 
 ```bash
 # Cloner le repo
@@ -19,23 +39,19 @@ cd predictor_ufc
 # Créer un environnement virtuel
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# ou: venv\Scripts\activate  # Windows
 
 # Installer les dépendances
 pip install -r requirements.txt
-```
 
-## ▶️ Lancer l'application
-
-```bash
+# Lancer l'app
 streamlit run app.py
 ```
 
-## 🎯 Fonctionnalités
+## �� Fonctionnalités
 
 - **Événements à venir**: Récupère les prochains combats UFC
 - **Recommandations de paris**: Calcul automatique avec critère de Kelly
-- **Gestion Bankroll**: Suivi des paris et performances
+- **Gestion Bankroll**: Suivi des paris (synchronisé avec GitHub)
 - **Classement Elo**: Ranking des combattants
 - **Mise à jour des données**: Scraping automatique
 
@@ -48,10 +64,6 @@ streamlit run app.py
 | EV max | 50% |
 | Cotes | 1.20 - 3.0 |
 | Kelly | 1/10 |
-
-## ⚠️ Avertissement
-
-Les paris sportifs comportent des risques. Cette application fournit des recommandations basées sur des modèles statistiques mais ne garantit pas les résultats. Pariez de manière responsable.
 
 ## 📁 Structure
 
@@ -66,14 +78,9 @@ predictor_ufc/
 │   │   └── ratings_timeseries.parquet
 │   └── processed/
 │       └── model_pipeline.pkl
-└── bets/                     # Données personnelles (gitignore)
+└── bets/                     # Paris (sync GitHub)
 ```
 
-## 🔧 Technologies
+## ⚠️ Avertissement
 
-- Python 3.10+
-- Streamlit
-- Scikit-learn (LogisticRegression)
-- Pandas / NumPy
-- Plotly
-- BeautifulSoup4
+Les paris sportifs comportent des risques. Pariez de manière responsable.
