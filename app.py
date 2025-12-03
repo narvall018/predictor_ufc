@@ -2060,68 +2060,77 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     strategy
                                 )
                                 
-                                # ❌ Ne pas parier si nouveau combattant
-                                if has_new_fighter:
-                                    st.error("🚫 **Pari bloqué** : Données insuffisantes (nouveau combattant avec Elo 1500)")
-                                    with st.expander("Voir les probabilités (à titre indicatif)"):
-                                        st.write(f"**{fight['red_fighter']}**: {prediction['proba_a']:.1%}")
-                                        st.write(f"**{fight['blue_fighter']}**: {prediction['proba_b']:.1%}")
-                                        st.caption("⚠️ Ces probabilités sont indicatives uniquement.")
+                                # ⚠️ Warning si données bio manquantes (mais pas bloquant)
+                                has_bio_warning = False
+                                if prediction.get('reach_diff') == 0 and prediction.get('age_diff') in [0, 0.5, None]:
+                                    has_bio_warning = True
+                                    st.warning("⚠️ **Données physiques incomplètes** : reach/age utilisent les médianes. L'edge est basé principalement sur les cotes du marché.")
                                 
-                                else:
-                                    # ✅ Évaluer uniquement le FAVORI (plus haute probabilité)
-                                    if prediction['proba_a'] >= prediction['proba_b']:
-                                        fav_stake = stake_a
-                                        fav_fighter = fight['red_fighter']
-                                        fav_odds = odds_a
-                                        fav_proba = prediction['proba_a']
-                                    else:
-                                        fav_stake = stake_b
-                                        fav_fighter = fight['blue_fighter']
-                                        fav_odds = odds_b
-                                        fav_proba = prediction['proba_b']
+                                # ✅ NOUVELLE LOGIQUE: Parier sur le combattant avec edge ≥ seuil (pas juste le favori)
+                                best_bet = None
+                                
+                                # Vérifier si A a un edge suffisant
+                                if stake_a['should_bet']:
+                                    best_bet = {
+                                        'fighter': fight['red_fighter'],
+                                        'stake_info': stake_a,
+                                        'odds': odds_a,
+                                        'proba': prediction['proba_a'],
+                                        'color': '🔴'
+                                    }
+                                
+                                # Vérifier si B a un edge suffisant (et meilleur que A)
+                                if stake_b['should_bet']:
+                                    if best_bet is None or stake_b['edge'] > best_bet['stake_info']['edge']:
+                                        best_bet = {
+                                            'fighter': fight['blue_fighter'],
+                                            'stake_info': stake_b,
+                                            'odds': odds_b,
+                                            'proba': prediction['proba_b'],
+                                            'color': '🔵'
+                                        }
+                                
+                                if best_bet:
+                                    st.markdown(f"""
+                                    <div class="bet-recommendation">
+                                        <h5>✅ RECOMMANDATION DE PARI</h5>
+                                        <p><b>Parier sur:</b> {best_bet['color']} {best_bet['fighter']}</p>
+                                        <p><b>Cote:</b> {best_bet['odds']:.2f}</p>
+                                        <p><b>Mise recommandée:</b> {best_bet['stake_info']['stake']:.2f} €</p>
+                                        <p><b>Edge:</b> {best_bet['stake_info']['edge']:.1%}</p>
+                                        <p><b>EV:</b> {best_bet['stake_info']['ev']:.1%}</p>
+                                        <p><b>% Bankroll:</b> {best_bet['stake_info']['kelly_pct']:.2%}</p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                                     
-                                    if fav_stake['should_bet']:
-                                        st.markdown(f"""
-                                        <div class="bet-recommendation">
-                                            <h5>✅ RECOMMANDATION DE PARI</h5>
-                                            <p><b>Parier sur:</b> {fav_fighter}</p>
-                                            <p><b>Cote:</b> {fav_odds:.2f}</p>
-                                            <p><b>Mise recommandée:</b> {fav_stake['stake']:.2f} €</p>
-                                            <p><b>Edge:</b> {fav_stake['edge']:.1%}</p>
-                                            <p><b>EV:</b> {fav_stake['ev']:.1%}</p>
-                                            <p><b>% Kelly:</b> {fav_stake['kelly_pct']:.2%} de la bankroll</p>
-                                        </div>
-                                        """, unsafe_allow_html=True)
+                                    if st.button(f"💾 Enregistrer ce pari", key=f"save_bet_{i}_{j}"):
+                                        success = add_bet(
+                                            event_name=event['name'],
+                                            fighter_red=fight['red_fighter'],
+                                            fighter_blue=fight['blue_fighter'],
+                                            pick=best_bet['fighter'],
+                                            odds=best_bet['odds'],
+                                            stake=best_bet['stake_info']['stake'],
+                                            model_probability=best_bet['proba'],
+                                            kelly_fraction=strategy['kelly_fraction'],
+                                            edge=best_bet['stake_info']['edge'],
+                                            ev=best_bet['stake_info']['ev']
+                                        )
                                         
-                                        if st.button(f"💾 Enregistrer ce pari", key=f"save_bet_{i}_{j}"):
-                                            success = add_bet(
-                                                event_name=event['name'],
-                                                fighter_red=fight['red_fighter'],
-                                                fighter_blue=fight['blue_fighter'],
-                                                pick=fav_fighter,
-                                                odds=fav_odds,
-                                                stake=fav_stake['stake'],
-                                                model_probability=fav_proba,
-                                                kelly_fraction=strategy['kelly_fraction'],
-                                                edge=fav_stake['edge'],
-                                                ev=fav_stake['ev']
-                                            )
-                                            
-                                            if success:
-                                                st.success(f"✅ Pari enregistré : {fav_stake['stake']:.2f}€ sur {fav_fighter}")
-                                            else:
-                                                st.error("❌ Erreur lors de l'enregistrement")
-                                    else:
-                                        st.warning(f"⚠️ Aucun pari recommandé pour le favori ({fav_fighter})")
-                                        
-                                        with st.expander("Voir les détails"):
-                                            st.write(f"**Favori: {fav_fighter}**")
-                                            st.write(f"- Confiance: {fav_proba:.1%} (min: {strategy['min_confidence']:.1%})")
-                                            st.write(f"- Edge: {fav_stake['edge']:.1%} (min: {strategy['min_edge']:.1%})")
-                                            st.write(f"- EV: {fav_stake['ev']:.1%}")
-                                            if fav_stake.get('reason'):
-                                                st.write(f"- Raison: {fav_stake['reason']}")
+                                        if success:
+                                            st.success(f"✅ Pari enregistré : {best_bet['stake_info']['stake']:.2f}€ sur {best_bet['fighter']}")
+                                        else:
+                                            st.error("❌ Erreur lors de l'enregistrement")
+                                else:
+                                    st.info(f"ℹ️ Aucun pari recommandé (edge < {strategy['min_edge']:.0%} pour les deux combattants)")
+                                    
+                                    with st.expander("Voir les détails"):
+                                        st.write(f"**{fight['red_fighter']}**: Edge {stake_a['edge']:.1%}")
+                                        if stake_a.get('reason'):
+                                            st.write(f"  → {stake_a['reason']}")
+                                        st.write(f"**{fight['blue_fighter']}**: Edge {stake_b['edge']:.1%}")
+                                        if stake_b.get('reason'):
+                                            st.write(f"  → {stake_b['reason']}")
                             
                             st.markdown("---")
                     else:
