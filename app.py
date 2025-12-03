@@ -1174,6 +1174,57 @@ def load_fighters_data():
     
     return fighters
 
+@st.cache_data(ttl=3600)
+def get_fighter_recent_fights(fighter_id, n_fights=3):
+    """
+    Récupère les n derniers combats d'un combattant.
+    
+    Returns:
+        Liste de dicts avec: opponent_name, result (W/L), event_date, method
+    """
+    ratings_path = INTERIM_DIR / "ratings_timeseries.parquet"
+    
+    if not ratings_path.exists():
+        return []
+    
+    try:
+        ratings_df = pd.read_parquet(ratings_path)
+        
+        # Filtrer les combats du combattant (position 1 ou 2)
+        fights_as_1 = ratings_df[ratings_df['fighter_1_id'] == fighter_id].copy()
+        fights_as_1['position'] = 1
+        fights_as_1['opponent_name'] = fights_as_1['fighter_2']
+        fights_as_1['result'] = fights_as_1['winner'].apply(lambda w: 'W' if w == 1 else 'L')
+        
+        fights_as_2 = ratings_df[ratings_df['fighter_2_id'] == fighter_id].copy()
+        fights_as_2['position'] = 2
+        fights_as_2['opponent_name'] = fights_as_2['fighter_1']
+        fights_as_2['result'] = fights_as_2['winner'].apply(lambda w: 'W' if w == 2 else 'L')
+        
+        # Combiner et trier par date
+        all_fights = pd.concat([fights_as_1, fights_as_2])
+        if all_fights.empty:
+            return []
+        
+        all_fights['event_date'] = pd.to_datetime(all_fights['event_date'])
+        all_fights = all_fights.sort_values('event_date', ascending=False)
+        
+        # Prendre les n derniers combats
+        recent = all_fights.head(n_fights)
+        
+        result = []
+        for _, row in recent.iterrows():
+            result.append({
+                'opponent': row['opponent_name'],
+                'result': row['result'],
+                'date': row['event_date'].strftime('%d/%m/%Y') if pd.notna(row['event_date']) else 'N/A'
+            })
+        
+        return result
+        
+    except Exception as e:
+        return []
+
 # ============================================================================
 # CALCUL DES MISES (STRATÉGIE KELLY)
 # ============================================================================
@@ -1743,6 +1794,18 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     <p>{elo_display_a}</p>
                                 </div>
                                 """, unsafe_allow_html=True)
+                                
+                                # 📜 Derniers combats du combattant rouge
+                                fighter_a_id = id_from_url(fight['red_url']) if fight.get('red_url') else None
+                                if fighter_a_id and not is_new_fighter_a:
+                                    recent_a = get_fighter_recent_fights(fighter_a_id, 3)
+                                    if recent_a:
+                                        history_html = "<div style='font-size: 0.85em; margin-top: 5px;'><b>📜 Derniers combats:</b><br>"
+                                        for f in recent_a:
+                                            emoji = "✅" if f['result'] == 'W' else "❌"
+                                            history_html += f"{emoji} vs {f['opponent']} ({f['date']})<br>"
+                                        history_html += "</div>"
+                                        st.markdown(history_html, unsafe_allow_html=True)
                             
                             with fight_cols[1]:
                                 new_badge_b = " 🆕" if is_new_fighter_b else ""
@@ -1753,6 +1816,18 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     <p>{elo_display_b}</p>
                                 </div>
                                 """, unsafe_allow_html=True)
+                                
+                                # 📜 Derniers combats du combattant bleu
+                                fighter_b_id = id_from_url(fight['blue_url']) if fight.get('blue_url') else None
+                                if fighter_b_id and not is_new_fighter_b:
+                                    recent_b = get_fighter_recent_fights(fighter_b_id, 3)
+                                    if recent_b:
+                                        history_html = "<div style='font-size: 0.85em; margin-top: 5px;'><b>📜 Derniers combats:</b><br>"
+                                        for f in recent_b:
+                                            emoji = "✅" if f['result'] == 'W' else "❌"
+                                            history_html += f"{emoji} vs {f['opponent']} ({f['date']})<br>"
+                                        history_html += "</div>"
+                                        st.markdown(history_html, unsafe_allow_html=True)
                             
                             # ⚠️ Avertissement si nouveau combattant
                             if has_new_fighter:
