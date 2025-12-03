@@ -16,6 +16,8 @@ import subprocess
 import time
 import base64
 import io
+import urllib.request
+import urllib.error
 
 # ============================================================================
 # CONFIGURATION GITHUB (pour Streamlit Cloud)
@@ -196,6 +198,200 @@ BETTING_STRATEGIES = {
         "description": "💎 Value - Focus sur les underdogs (cotes ≥2.0)"
     },
 }
+
+# ============================================================================
+# THE ODDS API - RÉCUPÉRATION AUTOMATIQUE DES COTES
+# ============================================================================
+# API gratuite: 500 requêtes/mois - https://the-odds-api.com
+# Sport key: mma_mixed_martial_arts
+
+def get_odds_api_key():
+    """Récupère la clé API depuis les secrets Streamlit, session ou variable d'env"""
+    # 1. Clé temporaire en session
+    if 'temp_odds_api_key' in st.session_state and st.session_state.temp_odds_api_key:
+        return st.session_state.temp_odds_api_key
+    
+    # 2. Secrets Streamlit
+    try:
+        key = st.secrets.get("ODDS_API_KEY", "")
+        if key:
+            return key
+    except:
+        pass
+    
+    # 3. Variable d'environnement
+    return os.environ.get("ODDS_API_KEY", "")
+
+def fetch_mma_odds(api_key=None, bookmaker="pinnacle"):
+    """
+    Récupère les cotes MMA depuis The Odds API
+    
+    Args:
+        api_key: Clé API (optionnel, utilise secrets sinon)
+        bookmaker: Bookmaker préféré (pinnacle par défaut - meilleures cotes)
+    
+    Returns:
+        dict: {event_id: {fighter1: odds1, fighter2: odds2, ...}}
+    """
+    if not api_key:
+        api_key = get_odds_api_key()
+    
+    if not api_key:
+        return None, "❌ Clé API manquante. Ajoutez ODDS_API_KEY dans les secrets Streamlit."
+    
+    url = f"https://api.the-odds-api.com/v4/sports/mma_mixed_martial_arts/odds"
+    params = {
+        "apiKey": api_key,
+        "regions": "eu",  # Europe pour avoir Pinnacle
+        "markets": "h2h",  # Head to head (moneyline)
+        "oddsFormat": "decimal"
+    }
+    
+    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+    full_url = f"{url}?{query_string}"
+    
+    try:
+        req = urllib.request.Request(full_url, headers={"User-Agent": "UFC-Predictor"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            
+            # Extraire les headers pour le quota
+            remaining = response.headers.get('x-requests-remaining', '?')
+            used = response.headers.get('x-requests-used', '?')
+            
+            # Parser les données
+            odds_data = {}
+            for event in data:
+                event_key = f"{event.get('home_team', '')} vs {event.get('away_team', '')}"
+                event_time = event.get('commence_time', '')
+                
+                # Trouver le bookmaker préféré ou le premier disponible
+                bookmakers = event.get('bookmakers', [])
+                selected_book = None
+                
+                # Priorité: pinnacle > betfair > unibet > premier dispo
+                priority_books = ['pinnacle', 'betfair', 'unibet', '1xbet']
+                for prio in priority_books:
+                    for book in bookmakers:
+                        if book.get('key', '').lower() == prio:
+                            selected_book = book
+                            break
+                    if selected_book:
+                        break
+                
+                if not selected_book and bookmakers:
+                    selected_book = bookmakers[0]
+                
+                if selected_book:
+                    markets = selected_book.get('markets', [])
+                    for market in markets:
+                        if market.get('key') == 'h2h':
+                            outcomes = market.get('outcomes', [])
+                            fight_odds = {}
+                            for outcome in outcomes:
+                                fighter_name = outcome.get('name', '')
+                                price = outcome.get('price', 0)
+                                fight_odds[fighter_name] = price
+                            
+                            odds_data[event_key] = {
+                                'odds': fight_odds,
+                                'bookmaker': selected_book.get('title', 'Unknown'),
+                                'last_update': selected_book.get('last_update', ''),
+                                'commence_time': event_time,
+                                'home_team': event.get('home_team', ''),
+                                'away_team': event.get('away_team', '')
+                            }
+            
+            return odds_data, f"✅ {len(odds_data)} combats récupérés (Quota: {used}/{int(used)+int(remaining) if remaining != '?' else '?'})"
+            
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return None, "❌ Clé API invalide"
+        elif e.code == 429:
+            return None, "❌ Quota API dépassé (500 req/mois gratuit)"
+        else:
+            return None, f"❌ Erreur API: {e.code}"
+    except Exception as e:
+        return None, f"❌ Erreur: {str(e)}"
+
+def normalize_fighter_name_for_matching(name):
+    """Normalise un nom pour le matching entre UFC et The Odds API"""
+    if not name:
+        return ""
+    # Retirer accents
+    name = unicodedata.normalize('NFKD', name)
+    name = ''.join(c for c in name if not unicodedata.combining(c))
+    # Minuscules, retirer ponctuation
+    name = name.lower()
+    name = re.sub(r"[^a-z\s]", "", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
+
+def match_fighter_to_odds(fighter_name, odds_dict):
+    """
+    Trouve les cotes correspondant à un combattant
+    
+    Args:
+        fighter_name: Nom du combattant (ex: "Jon Jones")
+        odds_dict: Dict des cotes de l'API
+        
+    Returns:
+        (odds_value, matched_name, bookmaker) ou (None, None, None)
+    """
+    if not fighter_name or not odds_dict:
+        return None, None, None
+    
+    norm_name = normalize_fighter_name_for_matching(fighter_name)
+    name_parts = norm_name.split()
+    
+    # Chercher dans toutes les données de cotes
+    for event_key, event_data in odds_dict.items():
+        odds = event_data.get('odds', {})
+        bookmaker = event_data.get('bookmaker', '')
+        
+        for api_fighter, api_odds in odds.items():
+            norm_api = normalize_fighter_name_for_matching(api_fighter)
+            api_parts = norm_api.split()
+            
+            # Match exact
+            if norm_name == norm_api:
+                return api_odds, api_fighter, bookmaker
+            
+            # Match par nom de famille (dernier mot)
+            if name_parts and api_parts:
+                if name_parts[-1] == api_parts[-1]:
+                    # Vérifier au moins une partie du prénom
+                    if len(name_parts) > 1 and len(api_parts) > 1:
+                        if name_parts[0][0] == api_parts[0][0]:  # Même initiale
+                            return api_odds, api_fighter, bookmaker
+                    elif len(name_parts) == 1 or len(api_parts) == 1:
+                        return api_odds, api_fighter, bookmaker
+    
+    return None, None, None
+
+def find_fight_odds(fighter_a, fighter_b, odds_dict):
+    """
+    Trouve les cotes pour un combat spécifique
+    
+    Returns:
+        (odds_a, odds_b, bookmaker, matched_a, matched_b) ou None si non trouvé
+    """
+    if not odds_dict:
+        return None
+    
+    odds_a, matched_a, book_a = match_fighter_to_odds(fighter_a, odds_dict)
+    odds_b, matched_b, book_b = match_fighter_to_odds(fighter_b, odds_dict)
+    
+    if odds_a and odds_b:
+        return {
+            'odds_a': odds_a,
+            'odds_b': odds_b,
+            'bookmaker': book_a or book_b,
+            'matched_a': matched_a,
+            'matched_b': matched_b
+        }
+    
+    return None
 
 # STYLES CSS
 # ============================================================================
@@ -1840,15 +2036,38 @@ def show_events_page(model_data, fighters_data, current_bankroll):
     
     st.title("📅 Événements UFC à venir")
     
-    if st.button("🔄 Récupérer les événements", type="primary"):
-        with st.spinner("Récupération des événements..."):
-            events = get_upcoming_events()
-            st.session_state.events = events
-            
-            if events:
-                st.success(f"✅ {len(events)} événements récupérés")
-            else:
-                st.error("❌ Aucun événement trouvé")
+    # Boutons principaux
+    btn_cols = st.columns([2, 2, 1])
+    
+    with btn_cols[0]:
+        if st.button("🔄 Récupérer les événements", type="primary"):
+            with st.spinner("Récupération des événements..."):
+                events = get_upcoming_events()
+                st.session_state.events = events
+                
+                if events:
+                    st.success(f"✅ {len(events)} événements récupérés")
+                else:
+                    st.error("❌ Aucun événement trouvé")
+    
+    with btn_cols[1]:
+        if st.button("💰 Récupérer cotes (API)", help="Récupère automatiquement les cotes MMA depuis The Odds API"):
+            with st.spinner("Récupération des cotes..."):
+                odds_data, message = fetch_mma_odds()
+                if odds_data:
+                    st.session_state.api_odds = odds_data
+                    st.success(message)
+                else:
+                    st.warning(message)
+    
+    # Afficher les cotes disponibles si récupérées
+    if 'api_odds' in st.session_state and st.session_state.api_odds:
+        with st.expander(f"📊 Cotes API disponibles ({len(st.session_state.api_odds)} combats)", expanded=False):
+            for event_key, event_data in st.session_state.api_odds.items():
+                odds = event_data.get('odds', {})
+                bookmaker = event_data.get('bookmaker', '')
+                fighters_str = " | ".join([f"{f}: {o:.2f}" for f, o in odds.items()])
+                st.write(f"**{event_key}** ({bookmaker}): {fighters_str}")
     
     if 'events' in st.session_state and st.session_state.events:
         
@@ -1987,6 +2206,27 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                             # 💵 D'abord entrer les cotes (nécessaires pour le nouveau modèle)
                             st.markdown("##### 💵 Cotes du bookmaker")
                             
+                            # ✅ Chercher les cotes automatiques depuis l'API
+                            api_odds_info = None
+                            default_odds_a = 2.0
+                            default_odds_b = 2.0
+                            
+                            if 'api_odds' in st.session_state and st.session_state.api_odds:
+                                api_odds_info = find_fight_odds(
+                                    fight['red_fighter'], 
+                                    fight['blue_fighter'], 
+                                    st.session_state.api_odds
+                                )
+                                if api_odds_info:
+                                    default_odds_a = api_odds_info['odds_a']
+                                    default_odds_b = api_odds_info['odds_b']
+                            
+                            # Afficher info si cotes trouvées automatiquement
+                            if api_odds_info:
+                                st.success(f"🔄 Cotes auto ({api_odds_info['bookmaker']}): "
+                                          f"{api_odds_info['matched_a']} @ {api_odds_info['odds_a']:.2f} | "
+                                          f"{api_odds_info['matched_b']} @ {api_odds_info['odds_b']:.2f}")
+                            
                             odds_cols = st.columns(2)
                             
                             with odds_cols[0]:
@@ -1994,7 +2234,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     f"Cote {fight['red_fighter']}",
                                     min_value=1.01,
                                     max_value=50.0,
-                                    value=2.0,
+                                    value=default_odds_a,
                                     step=0.01,
                                     key=f"odds_a_{i}_{j}"
                                 )
@@ -2004,7 +2244,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     f"Cote {fight['blue_fighter']}",
                                     min_value=1.01,
                                     max_value=50.0,
-                                    value=2.0,
+                                    value=default_odds_b,
                                     step=0.01,
                                     key=f"odds_b_{i}_{j}"
                                 )
@@ -2717,6 +2957,40 @@ def main():
     
     st.markdown('<div class="main-title">🥊 Combat Sports Betting App 🥊</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Modèle ML sans data leakage - ROI +20% TRAIN / +50% TEST</div>', unsafe_allow_html=True)
+    
+    # ============================================================================
+    # SIDEBAR - CONFIGURATION API COTES
+    # ============================================================================
+    with st.sidebar:
+        st.markdown("### ⚙️ Configuration")
+        
+        with st.expander("🔑 API Cotes (The Odds API)"):
+            st.markdown("""
+            **The Odds API** permet de récupérer automatiquement les cotes MMA.
+            
+            - 🆓 **Gratuit**: 500 requêtes/mois
+            - 📊 Cotes de Pinnacle, Betfair, Unibet...
+            - 🔗 [Obtenir une clé API](https://the-odds-api.com/#get-access)
+            """)
+            
+            # Vérifier si une clé est déjà configurée
+            current_key = get_odds_api_key()
+            key_status = "✅ Configurée" if current_key else "❌ Non configurée"
+            st.markdown(f"**Status:** {key_status}")
+            
+            if not current_key:
+                st.info("💡 Ajoutez `ODDS_API_KEY` dans les secrets Streamlit ou comme variable d'environnement.")
+                
+                # Option pour tester une clé temporairement
+                temp_key = st.text_input("Clé API (temporaire)", type="password", key="temp_api_key")
+                if temp_key:
+                    st.session_state.temp_odds_api_key = temp_key
+                    st.success("Clé temporaire enregistrée pour cette session")
+        
+        st.markdown("---")
+        st.markdown("### 📊 Stats rapides")
+        if model_data:
+            st.metric("Combattants", f"{len(model_data.get('elo_dict', {})):,}")
     
     tabs = st.tabs([
         "🏠 Accueil",
