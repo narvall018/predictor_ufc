@@ -207,20 +207,28 @@ BETTING_STRATEGIES = {
 
 def get_odds_api_key():
     """Récupère la clé API depuis les secrets Streamlit, session ou variable d'env"""
+    key = None
+    
     # 1. Clé temporaire en session
     if 'temp_odds_api_key' in st.session_state and st.session_state.temp_odds_api_key:
-        return st.session_state.temp_odds_api_key
+        key = st.session_state.temp_odds_api_key
     
     # 2. Secrets Streamlit
-    try:
-        key = st.secrets.get("ODDS_API_KEY", "")
-        if key:
-            return key
-    except:
-        pass
+    if not key:
+        try:
+            key = st.secrets.get("ODDS_API_KEY", "")
+        except:
+            pass
     
     # 3. Variable d'environnement
-    return os.environ.get("ODDS_API_KEY", "")
+    if not key:
+        key = os.environ.get("ODDS_API_KEY", "")
+    
+    # ✅ Nettoyer la clé (retirer espaces, retours à la ligne)
+    if key:
+        key = key.strip().replace(" ", "").replace("\n", "").replace("\t", "")
+    
+    return key
 
 def fetch_mma_odds(api_key=None, bookmaker="pinnacle"):
     """
