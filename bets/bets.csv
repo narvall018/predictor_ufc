@@ -1,2 +1,3 @@
 bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kelly_fraction,edge,ev,status,result,profit,roi
 1,2025-12-02 16:31,UFC 323: Dvalishvili vs. Yan 2,Jan Blachowicz,Bogdan Guskov,Jan Blachowicz,1.74,35.82960582960585,0.7270914270914272,10,0.1523787834132662,0.2651390831390832,open,,0.0,0.0
+2,2025-12-03 15:38,UFC 323: Dvalishvili vs. Yan 2,Terrance McKinney,Chris Duncan,Terrance McKinney,2.45,50.0,0.4371452091058158,20,0.028981943799693377,0.07100576230924882,open,,0.0,0.0
