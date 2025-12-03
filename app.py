@@ -151,16 +151,27 @@ BASE_ELO = 1500.0
 # ✅ STRATÉGIES DE PARIS OPTIMISÉES - Modèle Market + Reach + Age
 # Validé: ROI +18.1%, IC 95% [+5.5%, +30.9%], Proba profit 99.8%
 BETTING_STRATEGIES = {
-    "EDGE ≥3% (RECOMMANDÉE)": {
-        "kelly_fraction": 20,  # Kelly / 20 = mise plus conservatrice
-        "min_confidence": 0.0,  # Pas de seuil de confiance, on utilise l'edge
-        "min_edge": 0.03,  # Edge minimum 3%
-        "max_value": 1.0,  # Pas de limite EV
+    "EDGE ≥2% (RECOMMANDÉE)": {
+        "kelly_fraction": 20,
+        "min_confidence": 0.0,
+        "min_edge": 0.02,  # Edge minimum 2%
+        "max_value": 1.0,
         "min_odds": 1.10,
         "max_odds": 10.0,
-        "max_bet_fraction": 0.05,  # Max 5% de la bankroll
+        "max_bet_fraction": 0.05,
         "min_bet_pct": 0.05,  # Flat 5%
-        "description": "🏆 RECOMMANDÉE - ROI +18.1% TEST, 275 paris, IC [+5.5%, +30.9%], 99.8% proba profit"
+        "description": "🏆 RECOMMANDÉE - ROI +12.9%, 1588 paris, IC [+7.2%, +18.0%], plus de volume"
+    },
+    "EDGE ≥3% (ÉQUILIBRÉE)": {
+        "kelly_fraction": 20,
+        "min_confidence": 0.0,
+        "min_edge": 0.03,  # Edge minimum 3%
+        "max_value": 1.0,
+        "min_odds": 1.10,
+        "max_odds": 10.0,
+        "max_bet_fraction": 0.05,
+        "min_bet_pct": 0.05,
+        "description": "⚖️ Équilibrée - ROI +15.3%, 1027 paris, IC [+8.9%, +21.3%]"
     },
     "EDGE ≥5% (CONSERVATRICE)": {
         "kelly_fraction": 20,
@@ -171,18 +182,7 @@ BETTING_STRATEGIES = {
         "max_odds": 10.0,
         "max_bet_fraction": 0.05,
         "min_bet_pct": 0.05,
-        "description": "🔒 Conservatrice - Moins de paris, edge ≥5%"
-    },
-    "EDGE ≥2% (AGRESSIVE)": {
-        "kelly_fraction": 15,
-        "min_confidence": 0.0,
-        "min_edge": 0.02,  # Edge minimum 2%
-        "max_value": 1.0,
-        "min_odds": 1.10,
-        "max_odds": 10.0,
-        "max_bet_fraction": 0.08,
-        "min_bet_pct": 0.05,
-        "description": "⚡ Agressive - Plus de paris, edge ≥2%"
+        "description": "🔒 Conservatrice - ROI +24.7%, 312 paris, moins de volume"
     },
     "UNDERDOGS (VALUE)": {
         "kelly_fraction": 20,
