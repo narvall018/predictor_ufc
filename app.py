@@ -148,51 +148,52 @@ for d in [DATA_DIR, RAW_DIR, INTERIM_DIR, PROC_DIR, BETS_DIR]:
 K_FACTOR = 24
 BASE_ELO = 1500.0
 
-# ✅ STRATÉGIES DE PARIS OPTIMISÉES (Sans Data Leakage)
+# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Modèle Market + Reach + Age
+# Validé: ROI +18.1%, IC 95% [+5.5%, +30.9%], Proba profit 99.8%
 BETTING_STRATEGIES = {
-    "REALISTIC (RECOMMANDÉE)": {
-        "kelly_fraction": 10,
-        "min_confidence": 0.60,
-        "min_edge": 0.10,
-        "max_value": 0.50,
-        "min_odds": 1.20,
-        "max_odds": 3.0,
-        "max_bet_fraction": 0.05,
-        "min_bet_pct": 0.01,
-        "description": "🏆 RECOMMANDÉE - ROI +20.8% TRAIN, +50% TEST (25 paris TEST, Edge≥10%, EV max 50%)"
+    "EDGE ≥3% (RECOMMANDÉE)": {
+        "kelly_fraction": 20,  # Kelly / 20 = mise plus conservatrice
+        "min_confidence": 0.0,  # Pas de seuil de confiance, on utilise l'edge
+        "min_edge": 0.03,  # Edge minimum 3%
+        "max_value": 1.0,  # Pas de limite EV
+        "min_odds": 1.10,
+        "max_odds": 10.0,
+        "max_bet_fraction": 0.05,  # Max 5% de la bankroll
+        "min_bet_pct": 0.05,  # Flat 5%
+        "description": "🏆 RECOMMANDÉE - ROI +18.1% TEST, 275 paris, IC [+5.5%, +30.9%], 99.8% proba profit"
     },
-    "CONSERVATIVE": {
+    "EDGE ≥5% (CONSERVATRICE)": {
+        "kelly_fraction": 20,
+        "min_confidence": 0.0,
+        "min_edge": 0.05,  # Edge minimum 5%
+        "max_value": 1.0,
+        "min_odds": 1.10,
+        "max_odds": 10.0,
+        "max_bet_fraction": 0.05,
+        "min_bet_pct": 0.05,
+        "description": "🔒 Conservatrice - Moins de paris, edge ≥5%"
+    },
+    "EDGE ≥2% (AGRESSIVE)": {
         "kelly_fraction": 15,
-        "min_confidence": 0.65,
-        "min_edge": 0.12,
-        "max_value": 0.40,
-        "min_odds": 1.30,
-        "max_odds": 2.50,
-        "max_bet_fraction": 0.03,
-        "min_bet_pct": 0.01,
-        "description": "🔒 Conservatrice - Moins de paris, critères plus stricts"
-    },
-    "AGGRESSIVE": {
-        "kelly_fraction": 8,
-        "min_confidence": 0.55,
-        "min_edge": 0.08,
-        "max_value": 0.60,
-        "min_odds": 1.15,
-        "max_odds": 4.0,
+        "min_confidence": 0.0,
+        "min_edge": 0.02,  # Edge minimum 2%
+        "max_value": 1.0,
+        "min_odds": 1.10,
+        "max_odds": 10.0,
         "max_bet_fraction": 0.08,
-        "min_bet_pct": 0.01,
-        "description": "⚡ Agressive - Plus de paris, critères relâchés"
+        "min_bet_pct": 0.05,
+        "description": "⚡ Agressive - Plus de paris, edge ≥2%"
     },
-    "VALUE-ONLY": {
-        "kelly_fraction": 10,
-        "min_confidence": 0.55,
-        "min_edge": 0.05,
-        "max_value": 0.80,
-        "min_odds": 1.50,
-        "max_odds": 5.0,
+    "UNDERDOGS (VALUE)": {
+        "kelly_fraction": 20,
+        "min_confidence": 0.0,
+        "min_edge": 0.03,
+        "max_value": 1.0,
+        "min_odds": 2.0,  # Seulement cotes ≥2.0
+        "max_odds": 10.0,
         "max_bet_fraction": 0.05,
-        "min_bet_pct": 0.01,
-        "description": "💎 Value - Focus sur les cotes élevées avec edge"
+        "min_bet_pct": 0.05,
+        "description": "💎 Value - Focus sur les underdogs (cotes ≥2.0)"
     },
 }
 
@@ -361,11 +362,18 @@ def get_fighter_data_with_fallback(fighter_url, fighter_name, fighters_data, mod
     
     # Méthode 4: Valeurs par défaut
     elo = get_elo_for_fighter(fighter_id, model_data['elo_dict']) if fighter_id else BASE_ELO
+    
+    # Essayer de récupérer les données bio depuis model_data
+    fighter_bio = model_data.get('fighter_bio', {})
+    bio = fighter_bio.get(fighter_id, {}) if fighter_id else {}
+    
     return {
         'name': fighter_name or 'Unknown',
         'fighter_id': fighter_id,
         'elo_global': elo,
         'elo_div': BASE_ELO,
+        'reach_cm': bio.get('reach_cm'),  # ✅ Données bio pour le modèle
+        'age': bio.get('age'),  # ✅ Données bio pour le modèle
         'sig_lnd': 0,
         'sig_att': 0,
         'kd': 0,  # ✅ Knockdowns
@@ -955,20 +963,53 @@ def load_model_and_data():
         "model": None,
         "calibrator": None,
         "feat_cols": None,
+        "features": None,  # Liste des features du modèle
+        "feature_medians": {},  # Valeurs médianes pour imputation
+        "strategy": {},  # Stratégie de mise
         "ratings": None,
-        "elo_dict": {}
+        "elo_dict": {},
+        "fighter_bio": {}  # Données biographiques (reach, age)
     }
     
-    # Charger le modèle
+    # Charger le modèle (nouveau format avec features market+reach+age)
     model_path = PROC_DIR / "model_pipeline.pkl"
     if model_path.exists():
         try:
-            model_data = joblib.load(model_path)
-            data["model"] = model_data.get("model")
-            data["feat_cols"] = model_data.get("feat_cols", [])
-            st.success("✅ Modèle ML chargé avec succès")
+            model_info = joblib.load(model_path)
+            data["model"] = model_info.get("model")
+            data["features"] = model_info.get("features", ["market_logit", "reach_diff", "age_diff"])
+            data["feature_medians"] = model_info.get("feature_medians", {"reach_diff": 0, "age_diff": 0})
+            data["strategy"] = model_info.get("strategy", {"edge_threshold": 0.03, "stake_pct": 0.05})
+            # Pour compatibilité avec l'ancien code
+            data["feat_cols"] = data["features"]
         except Exception as e:
             st.warning(f"⚠️ Erreur chargement modèle: {e}")
+    
+    # Charger les données biographiques (reach, dob)
+    bio_path = RAW_DIR / "fighter_bio.parquet"
+    if bio_path.exists():
+        try:
+            bio_df = pd.read_parquet(bio_path)
+            fighter_bio = {}
+            for _, row in bio_df.iterrows():
+                fighter_id = id_from_url(row.get("fighter_url", ""))
+                if fighter_id:
+                    # Calculer l'âge à partir de dob
+                    age = None
+                    if pd.notna(row.get("dob")):
+                        try:
+                            dob = pd.to_datetime(row["dob"])
+                            age = (pd.Timestamp.now() - dob).days / 365.25
+                        except:
+                            pass
+                    fighter_bio[fighter_id] = {
+                        "reach_cm": row.get("reach_cm"),
+                        "age": age,
+                        "name": row.get("fighter_name", "")
+                    }
+            data["fighter_bio"] = fighter_bio
+        except Exception as e:
+            st.warning(f"⚠️ Erreur chargement fighter_bio: {e}")
     
     # Charger le calibrateur
     calib_path = PROC_DIR / "calibrator.pkl"
@@ -1053,10 +1094,35 @@ def load_model_and_data():
 
 @st.cache_data(ttl=3600)
 def load_fighters_data():
-    """Charge les données des combattants avec Elo POST (cohérent avec le modèle)"""
+    """Charge les données des combattants avec Elo POST et données bio (reach, age)"""
     fighters = {}
     
-    # ✅ D'abord, charger les Elo POST depuis ratings_timeseries
+    # ✅ Charger les données biographiques (reach, dob) d'abord
+    fighter_bio = {}
+    bio_path = RAW_DIR / "fighter_bio.parquet"
+    if bio_path.exists():
+        try:
+            bio_df = pd.read_parquet(bio_path)
+            for _, row in bio_df.iterrows():
+                fighter_id = id_from_url(row.get("fighter_url", ""))
+                if fighter_id:
+                    # Calculer l'âge à partir de dob
+                    age = None
+                    if pd.notna(row.get("dob")):
+                        try:
+                            dob = pd.to_datetime(row["dob"])
+                            age = (pd.Timestamp.now() - dob).days / 365.25
+                        except:
+                            pass
+                    fighter_bio[fighter_id] = {
+                        "reach_cm": row.get("reach_cm"),
+                        "age": age,
+                        "bio_name": row.get("fighter_name", "")
+                    }
+        except Exception as e:
+            st.warning(f"⚠️ Erreur chargement fighter_bio: {e}")
+    
+    # ✅ Charger les Elo POST depuis ratings_timeseries
     elo_post_dict = {}
     ratings_path = INTERIM_DIR / "ratings_timeseries.parquet"
     if ratings_path.exists():
@@ -1142,6 +1208,9 @@ def load_fighters_data():
                 fighter_id = id_from_url(fighter_url)
                 fighter_name = fighter_data.get('fighter_name', 'Unknown')
                 
+                # ✅ Récupérer les données bio (reach, age)
+                bio = fighter_bio.get(fighter_id, {})
+                
                 data_entry = {
                     'fighter_url': fighter_url,
                     'fighter_id': fighter_id,
@@ -1149,9 +1218,13 @@ def load_fighters_data():
                     # ✅ Utiliser Elo POST depuis ratings_timeseries
                     'elo_global': elo_post_dict.get(fighter_id, BASE_ELO),
                     'elo_div': fighter_data.get('elo_div_pre', BASE_ELO) if 'elo_div_pre' in fighter_data else BASE_ELO,
+                    # ✅ Données bio pour le nouveau modèle
+                    'reach_cm': bio.get('reach_cm'),
+                    'age': bio.get('age'),
+                    # Stats de combat
                     'sig_lnd': fighter_data.get('his_mean_sig_lnd', fighter_data.get('sig_lnd', 0)),
                     'sig_att': fighter_data.get('his_mean_sig_att', fighter_data.get('sig_att', 0)),
-                    'kd': fighter_data.get('his_mean_kd', fighter_data.get('kd', 0)),  # ✅ Knockdowns
+                    'kd': fighter_data.get('his_mean_kd', fighter_data.get('kd', 0)),
                     'td_lnd': fighter_data.get('his_mean_td_lnd', fighter_data.get('td_lnd', 0)),
                     'td_att': fighter_data.get('his_mean_td_att', fighter_data.get('td_att', 0)),
                     'adv_elo_mean_3': fighter_data.get('adv_elo_mean_3', BASE_ELO)
@@ -1295,56 +1368,128 @@ def calculate_kelly_stake(proba_model, odds, bankroll, strategy_params):
     }
 
 # ============================================================================
-# PRÉDICTION DE COMBAT
+# PRÉDICTION DE COMBAT (Nouveau modèle Market + Reach + Age)
 # ============================================================================
 
-def predict_fight(fighter_a_data, fighter_b_data, model_data):
-    """Prédit l'issue d'un combat"""
-    if not model_data["model"] or not model_data["feat_cols"]:
+def predict_fight_with_odds(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b):
+    """
+    Prédit l'issue d'un combat avec le nouveau modèle basé sur:
+    - market_logit: log-odds du marché
+    - reach_diff: différence d'allonge (cm)
+    - age_diff: différence d'âge (années)
+    
+    Returns:
+        dict avec proba_a, proba_b, edge_a, edge_b, recommendation
+    """
+    if not model_data.get("model"):
         return None
     
     try:
-        # ✅ Features correspondant au modèle sans data leakage
-        features = {}
-        features['Δ_elo_global_pre'] = fighter_a_data.get('elo_global', BASE_ELO) - fighter_b_data.get('elo_global', BASE_ELO)
-        features['Δ_elo_div_pre'] = fighter_a_data.get('elo_div', BASE_ELO) - fighter_b_data.get('elo_div', BASE_ELO)
-        features['Δ_his_mean_sig_lnd'] = fighter_a_data.get('sig_lnd', 0) - fighter_b_data.get('sig_lnd', 0)
-        features['Δ_his_mean_sig_att'] = fighter_a_data.get('sig_att', 0) - fighter_b_data.get('sig_att', 0)
-        features['Δ_his_mean_kd'] = fighter_a_data.get('kd', 0) - fighter_b_data.get('kd', 0)  # ✅ KD
-        features['Δ_his_mean_td_lnd'] = fighter_a_data.get('td_lnd', 0) - fighter_b_data.get('td_lnd', 0)
-        features['Δ_adv_elo_mean_3'] = fighter_a_data.get('adv_elo_mean_3', BASE_ELO) - fighter_b_data.get('adv_elo_mean_3', BASE_ELO)
+        # Calculer la probabilité marché (dévigée)
+        p_impl_a = 1 / odds_a
+        p_impl_b = 1 / odds_b
+        vig = p_impl_a + p_impl_b
+        proba_market = p_impl_a / vig  # Proba marché pour A
         
-        X = pd.DataFrame([features])
+        # Market logit
+        proba_market_clipped = np.clip(proba_market, 0.01, 0.99)
+        market_logit = np.log(proba_market_clipped / (1 - proba_market_clipped))
         
-        for col in model_data["feat_cols"]:
-            if col not in X.columns:
-                X[col] = 0
+        # Reach diff (A - B) - utilise les valeurs réelles ou 0 si manquant
+        reach_a = fighter_a_data.get('reach_cm')
+        reach_b = fighter_b_data.get('reach_cm')
         
-        X = X[model_data["feat_cols"]]
-        X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
-        
-        proba_raw = model_data["model"].predict_proba(X)[0][1]
-        
-        # ✅ Calibration simplifiée
-        if model_data.get("calibrator"):
-            try:
-                proba_cal = model_data["calibrator"].predict_proba(X)[0][1]
-            except:
-                proba_cal = proba_raw
+        # Si les deux reach sont disponibles, calculer la diff
+        # Sinon, utiliser la médiane de reach_diff (qui est 0)
+        if reach_a is not None and reach_b is not None and not pd.isna(reach_a) and not pd.isna(reach_b):
+            reach_diff = float(reach_a) - float(reach_b)
         else:
-            proba_cal = proba_raw
+            reach_diff = model_data.get('feature_medians', {}).get('reach_diff', 0.0)
+        
+        # Age diff (A - B) - utilise les valeurs réelles ou médiane si manquant
+        age_a = fighter_a_data.get('age')
+        age_b = fighter_b_data.get('age')
+        
+        if age_a is not None and age_b is not None and not pd.isna(age_a) and not pd.isna(age_b):
+            age_diff = float(age_a) - float(age_b)
+        else:
+            age_diff = model_data.get('feature_medians', {}).get('age_diff', 0.0)
+        
+        # Créer le vecteur de features
+        X = np.array([[market_logit, reach_diff, age_diff]])
+        
+        # Prédire
+        proba_a = model_data["model"].predict_proba(X)[0][1]
+        proba_b = 1 - proba_a
+        
+        # Calculer les edges
+        edge_a = proba_a - p_impl_a
+        edge_b = proba_b - p_impl_b
+        
+        # Déterminer la recommandation
+        threshold = model_data.get('strategy', {}).get('edge_threshold', 0.03)
+        
+        if edge_a >= threshold:
+            recommendation = {
+                'bet_on': 'A',
+                'fighter': fighter_a_data.get('name', 'Fighter A'),
+                'odds': odds_a,
+                'edge': edge_a,
+                'proba_model': proba_a
+            }
+        elif edge_b >= threshold:
+            recommendation = {
+                'bet_on': 'B',
+                'fighter': fighter_b_data.get('name', 'Fighter B'),
+                'odds': odds_b,
+                'edge': edge_b,
+                'proba_model': proba_b
+            }
+        else:
+            recommendation = None
         
         return {
-            'proba_a': proba_cal,
-            'proba_b': 1 - proba_cal,
-            'proba_raw': proba_raw,
-            'winner': 'A' if proba_cal > 0.5 else 'B',
-            'confidence': 'Élevée' if abs(proba_cal - 0.5) > 0.2 else 'Modérée'
+            'proba_a': proba_a,
+            'proba_b': proba_b,
+            'proba_market': proba_market,
+            'edge_a': edge_a,
+            'edge_b': edge_b,
+            'reach_diff': reach_diff,
+            'age_diff': age_diff,
+            'recommendation': recommendation,
+            'winner': 'A' if proba_a > 0.5 else 'B',
+            'confidence': 'Élevée' if abs(proba_a - 0.5) > 0.15 else 'Modérée'
         }
         
     except Exception as e:
         st.error(f"Erreur prédiction: {e}")
         return None
+
+def predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a=None, odds_b=None):
+    """
+    Prédit l'issue d'un combat.
+    - Si odds_a et odds_b fournis: utilise le nouveau modèle market+physique
+    - Sinon: fallback sur proba Elo uniquement
+    """
+    # Si cotes fournies, utiliser le nouveau modèle
+    if odds_a is not None and odds_b is not None:
+        return predict_fight_with_odds(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b)
+    
+    # Sinon, fallback sur Elo
+    elo_a = fighter_a_data.get('elo_global', BASE_ELO)
+    elo_b = fighter_b_data.get('elo_global', BASE_ELO)
+    
+    # Proba Elo classique
+    proba_elo_a = 1 / (1 + 10 ** ((elo_b - elo_a) / 400))
+    
+    return {
+        'proba_a': proba_elo_a,
+        'proba_b': 1 - proba_elo_a,
+        'proba_raw': proba_elo_a,
+        'winner': 'A' if proba_elo_a > 0.5 else 'B',
+        'confidence': 'Élevée' if abs(proba_elo_a - 0.5) > 0.2 else 'Modérée',
+        'note': 'Basé sur Elo uniquement (entrez les cotes pour prédiction complète)'
+    }
 
 # ============================================================================
 # SCRAPING ÉVÉNEMENTS UFC À VENIR
@@ -1586,30 +1731,30 @@ def show_home_page(model_data=None):
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### 📊 Performance du Modèle (Sans Data Leakage)")
+    st.markdown("### 📊 Performance du Modèle (Market + Reach + Age)")
     
     cols = st.columns(4)
     with cols[0]:
         st.markdown("""
         <div class="metric-box">
-            <div class="metric-value">~56%</div>
-            <div class="metric-label">Accuracy Modèle</div>
+            <div class="metric-value">60%</div>
+            <div class="metric-label">Win Rate TEST</div>
         </div>
         """, unsafe_allow_html=True)
     
     with cols[1]:
         st.markdown("""
         <div class="metric-box">
-            <div class="metric-value">+20.8%</div>
-            <div class="metric-label">ROI TRAIN</div>
+            <div class="metric-value">+18.1%</div>
+            <div class="metric-label">ROI TEST</div>
         </div>
         """, unsafe_allow_html=True)
     
     with cols[2]:
         st.markdown("""
         <div class="metric-box">
-            <div class="metric-value">+50%</div>
-            <div class="metric-label">ROI TEST</div>
+            <div class="metric-value">99.8%</div>
+            <div class="metric-label">Proba Profit</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1621,19 +1766,19 @@ def show_home_page(model_data=None):
         </div>
         """, unsafe_allow_html=True)
     
-    st.markdown("### 🎯 Stratégie REALISTIC (Recommandée)")
+    st.markdown("### 🎯 Stratégie Edge ≥3% (Recommandée)")
     
     param_cols = st.columns(5)
     with param_cols[0]:
-        st.metric("Confiance min", "60%")
+        st.metric("Edge min", "3%")
     with param_cols[1]:
-        st.metric("Edge min", "10%")
+        st.metric("Mise", "Flat 5%")
     with param_cols[2]:
-        st.metric("EV max", "50%")
+        st.metric("IC 95%", "[+5.5%, +30.9%]")
     with param_cols[3]:
-        st.metric("Odds range", "1.20-3.0")
+        st.metric("275 paris TEST", "2021-2025")
     with param_cols[4]:
-        st.metric("Kelly", "1/10")
+        st.metric("Features", "Market+Reach+Age")
     
     st.markdown("### 🎯 Fonctionnalités")
     
@@ -1839,41 +1984,67 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                 st.warning(f"⚠️ **Nouveau(x) combattant(s) détecté(s)** : {', '.join(new_fighters)}. "
                                           f"Elo par défaut (1500) = manque de données historiques. **Pari non recommandé.**")
                             
-                            prediction = predict_fight(fighter_a_data, fighter_b_data, model_data)
+                            # 💵 D'abord entrer les cotes (nécessaires pour le nouveau modèle)
+                            st.markdown("##### 💵 Cotes du bookmaker")
+                            
+                            odds_cols = st.columns(2)
+                            
+                            with odds_cols[0]:
+                                odds_a = st.number_input(
+                                    f"Cote {fight['red_fighter']}",
+                                    min_value=1.01,
+                                    max_value=50.0,
+                                    value=2.0,
+                                    step=0.01,
+                                    key=f"odds_a_{i}_{j}"
+                                )
+                            
+                            with odds_cols[1]:
+                                odds_b = st.number_input(
+                                    f"Cote {fight['blue_fighter']}",
+                                    min_value=1.01,
+                                    max_value=50.0,
+                                    value=2.0,
+                                    step=0.01,
+                                    key=f"odds_b_{i}_{j}"
+                                )
+                            
+                            # Prédiction avec les cotes (nouveau modèle market + physique)
+                            prediction = predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b)
                             
                             if prediction:
+                                # Calcul des probabilités implicites du marché
+                                proba_market_a = 1 / odds_a
+                                proba_market_b = 1 / odds_b
+                                
                                 st.markdown(f"""
                                 <div class="card">
-                                    <h5>📊 Prédiction du modèle</h5>
-                                    <p><b>{fight['red_fighter']}</b>: {prediction['proba_a']:.1%}</p>
-                                    <p><b>{fight['blue_fighter']}</b>: {prediction['proba_b']:.1%}</p>
-                                    <p>Confiance: {prediction['confidence']}</p>
+                                    <h5>📊 Prédiction du modèle (mkt+phys)</h5>
+                                    <table style="width:100%; text-align:center;">
+                                        <tr>
+                                            <th></th>
+                                            <th>🔴 {fight['red_fighter']}</th>
+                                            <th>🔵 {fight['blue_fighter']}</th>
+                                        </tr>
+                                        <tr>
+                                            <td><b>Modèle</b></td>
+                                            <td style="color: {'green' if prediction['proba_a'] > proba_market_a else 'red'};">{prediction['proba_a']:.1%}</td>
+                                            <td style="color: {'green' if prediction['proba_b'] > proba_market_b else 'red'};">{prediction['proba_b']:.1%}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><b>Marché</b></td>
+                                            <td>{proba_market_a:.1%}</td>
+                                            <td>{proba_market_b:.1%}</td>
+                                        </tr>
+                                        <tr>
+                                            <td><b>Edge</b></td>
+                                            <td style="color: {'green' if prediction['proba_a'] - proba_market_a > 0 else 'red'};">{(prediction['proba_a'] - proba_market_a)*100:+.1f}%</td>
+                                            <td style="color: {'green' if prediction['proba_b'] - proba_market_b > 0 else 'red'};">{(prediction['proba_b'] - proba_market_b)*100:+.1f}%</td>
+                                        </tr>
+                                    </table>
+                                    <p style="margin-top: 10px;"><small>Reach diff: {prediction.get('reach_diff', 'N/A')} cm | Age diff: {prediction.get('age_diff', 'N/A')} ans</small></p>
                                 </div>
                                 """, unsafe_allow_html=True)
-                                
-                                st.markdown("##### 💵 Cotes du bookmaker")
-                                
-                                odds_cols = st.columns(2)
-                                
-                                with odds_cols[0]:
-                                    odds_a = st.number_input(
-                                        f"Cote {fight['red_fighter']}",
-                                        min_value=1.01,
-                                        max_value=50.0,
-                                        value=2.0,
-                                        step=0.1,
-                                        key=f"odds_a_{i}_{j}"
-                                    )
-                                
-                                with odds_cols[1]:
-                                    odds_b = st.number_input(
-                                        f"Cote {fight['blue_fighter']}",
-                                        min_value=1.01,
-                                        max_value=50.0,
-                                        value=2.0,
-                                        step=0.1,
-                                        key=f"odds_b_{i}_{j}"
-                                    )
                                 
                                 stake_a = calculate_kelly_stake(
                                     prediction['proba_a'],
@@ -1895,7 +2066,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     with st.expander("Voir les probabilités (à titre indicatif)"):
                                         st.write(f"**{fight['red_fighter']}**: {prediction['proba_a']:.1%}")
                                         st.write(f"**{fight['blue_fighter']}**: {prediction['proba_b']:.1%}")
-                                        st.caption("⚠️ Ces probabilités sont peu fiables car basées sur un Elo par défaut.")
+                                        st.caption("⚠️ Ces probabilités sont indicatives uniquement.")
                                 
                                 else:
                                     # ✅ Évaluer uniquement le FAVORI (plus haute probabilité)
