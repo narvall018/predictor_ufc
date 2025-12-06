@@ -2,4 +2,5 @@ bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kel
 1,2025-12-02 16:31,UFC 323: Dvalishvili vs. Yan 2,Jan Blachowicz,Bogdan Guskov,Jan Blachowicz,1.74,35.82960582960585,0.7270914270914272,10,0.1523787834132662,0.2651390831390832,closed,void,0.0,0.0
 2,2025-12-03 15:38,UFC 323: Dvalishvili vs. Yan 2,Terrance McKinney,Chris Duncan,Terrance McKinney,2.45,50.0,0.4371452091058158,20,0.0289819437996933,0.0710057623092488,open,,0.0,0.0
 3,2025-12-03 15:38,UFC 323: Dvalishvili vs. Yan 2,Maycee Barber,Karine Silva,Maycee Barber,1.57,50.0,0.6597657956565763,20,0.0228231204973407,0.0358322991808248,open,,0.0,0.0
-4,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Alexandre Pantoja,Joshua Van,Joshua Van,2.84,50.0,0.37285963443530057,20,0.02074695837896251,0.058921361796253624,open,,0.0,0.0
+4,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Alexandre Pantoja,Joshua Van,Joshua Van,2.84,50.0,0.3728596344353005,20,0.0207469583789625,0.0589213617962536,open,,0.0,0.0
+5,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Henry Cejudo,Payton Talbott,Payton Talbott,1.4,50.0,0.7455685043237541,20,0.0312827900380398,0.043795906053255784,open,,0.0,0.0
