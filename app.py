@@ -156,18 +156,7 @@ BASE_ELO = 1500.0
 # Optimisation: Kelly fraction, Edge threshold, plage de cotes, max stake
 # ============================================================================
 BETTING_STRATEGIES = {
-    "🥈 ÉQUILIBRÉE (RECOMMANDÉE)": {
-        "kelly_fraction": 6,
-        "min_confidence": 0.0,
-        "min_edge": 0.001,  # Edge minimum 0.1%
-        "max_value": 1.0,
-        "min_odds": 1.0,
-        "max_odds": 4.0,
-        "max_bet_fraction": 0.10,
-        "min_bet_pct": 0.01,
-        "description": "⚖️ RECOMMANDÉE - Profit 8,175€ | ROI 3.8% | DD 30% | Sharpe 0.97 | 11/12 ans rentables | Meilleur ratio risque/rendement"
-    },
-    "🥇 OPTIMALE PRO (Agressive)": {
+    "🥇 OPTIMALE PRO (RECOMMANDÉE)": {
         "kelly_fraction": 4,
         "min_confidence": 0.0,
         "min_edge": 0.001,  # Edge minimum 0.1%
@@ -177,6 +166,17 @@ BETTING_STRATEGIES = {
         "max_bet_fraction": 0.10,
         "min_bet_pct": 0.01,
         "description": "🚀 MAX PROFIT - Profit 13,887€ | ROI 3.5% | DD 38% | Sharpe 0.94 | 12/12 ans rentables | Pour parieurs expérimentés"
+    },
+    "🥈 ÉQUILIBRÉE": {
+        "kelly_fraction": 6,
+        "min_confidence": 0.0,
+        "min_edge": 0.001,  # Edge minimum 0.1%
+        "max_value": 1.0,
+        "min_odds": 1.0,
+        "max_odds": 4.0,
+        "max_bet_fraction": 0.10,
+        "min_bet_pct": 0.01,
+        "description": "⚖️ ÉQUILIBRÉE - Profit 8,175€ | ROI 3.8% | DD 30% | Sharpe 0.97 | 11/12 ans rentables | Meilleur ratio risque/rendement"
     },
     "🥉 CONSERVATIVE": {
         "kelly_fraction": 8,
