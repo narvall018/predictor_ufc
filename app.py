@@ -150,52 +150,66 @@ for d in [DATA_DIR, RAW_DIR, INTERIM_DIR, PROC_DIR, BETS_DIR]:
 K_FACTOR = 24
 BASE_ELO = 1500.0
 
-# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Backtest 2014-2025 (4810 paris)
-# Stratégie principale: Kelly 1/8, Edge 0.3%, ROI 3.6%, DD 23%, Sharpe 2.58, 11/12 années rentables
+# ============================================================================
+# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Grid Search 97,000 combinaisons
+# Backtest 2014-2025 sur 4,959 combats UFC | Bankroll initiale: 1000€
+# Optimisation: Kelly fraction, Edge threshold, plage de cotes, max stake
+# ============================================================================
 BETTING_STRATEGIES = {
-    "KELLY 1/8 - OPTIMALE (RECOMMANDÉE)": {
+    "🥈 ÉQUILIBRÉE (RECOMMANDÉE)": {
+        "kelly_fraction": 6,
+        "min_confidence": 0.0,
+        "min_edge": 0.001,  # Edge minimum 0.1%
+        "max_value": 1.0,
+        "min_odds": 1.0,
+        "max_odds": 4.0,
+        "max_bet_fraction": 0.10,
+        "min_bet_pct": 0.01,
+        "description": "⚖️ RECOMMANDÉE - Profit 8,175€ | ROI 3.8% | DD 30% | Sharpe 0.97 | 11/12 ans rentables | Meilleur ratio risque/rendement"
+    },
+    "🥇 OPTIMALE PRO (Agressive)": {
+        "kelly_fraction": 4,
+        "min_confidence": 0.0,
+        "min_edge": 0.001,  # Edge minimum 0.1%
+        "max_value": 1.0,
+        "min_odds": 1.0,
+        "max_odds": 5.0,
+        "max_bet_fraction": 0.10,
+        "min_bet_pct": 0.01,
+        "description": "🚀 MAX PROFIT - Profit 13,887€ | ROI 3.5% | DD 38% | Sharpe 0.94 | 12/12 ans rentables | Pour parieurs expérimentés"
+    },
+    "🥉 CONSERVATIVE": {
         "kelly_fraction": 8,
         "min_confidence": 0.0,
-        "min_edge": 0.003,  # Edge minimum 0.3%
+        "min_edge": 0.001,  # Edge minimum 0.1%
         "max_value": 1.0,
-        "min_odds": 1.10,
-        "max_odds": 10.0,
-        "max_bet_fraction": 0.15,
+        "min_odds": 1.0,
+        "max_odds": 5.0,
+        "max_bet_fraction": 0.10,
         "min_bet_pct": 0.01,
-        "description": "🏆 OPTIMALE - ROI +3.6%, Profit 2626€, DD 23%, Sharpe 2.58, 11/12 ans rentables, 8 paris/sem"
+        "description": "🛡️ PRUDENTE - Profit 5,681€ | ROI 3.8% | DD 31% | Sharpe 0.90 | 11/12 ans rentables | Risque modéré"
     },
-    "KELLY 1/10 - MODÉRÉE": {
-        "kelly_fraction": 10,
-        "min_confidence": 0.0,
-        "min_edge": 0.003,  # Edge minimum 0.3%
-        "max_value": 1.0,
-        "min_odds": 1.10,
-        "max_odds": 10.0,
-        "max_bet_fraction": 0.15,
-        "min_bet_pct": 0.01,
-        "description": "⚖️ Modérée - ROI +3.6%, Profit 1856€, DD 19%, Sharpe 2.58, 11/12 ans rentables"
-    },
-    "KELLY 1/15 - CONSERVATRICE": {
+    "🔰 DÉBUTANT (Faible risque)": {
         "kelly_fraction": 15,
         "min_confidence": 0.0,
-        "min_edge": 0.003,  # Edge minimum 0.3%
+        "min_edge": 0.02,  # Edge minimum 2%
         "max_value": 1.0,
-        "min_odds": 1.10,
-        "max_odds": 10.0,
-        "max_bet_fraction": 0.15,
+        "min_odds": 1.1,
+        "max_odds": 3.0,
+        "max_bet_fraction": 0.10,
         "min_bet_pct": 0.01,
-        "description": "🔒 Conservatrice - ROI +3.5%, Profit 1047€, DD 13%, Sharpe 2.58, 11/12 ans rentables"
+        "description": "🔰 DÉBUTANT - Profit 2,050€ | ROI 3.4% | DD 22% | Sharpe 0.76 | 9/12 ans | Drawdown minimal, idéal pour apprendre"
     },
-    "UNDERDOGS KELLY 1/10": {
-        "kelly_fraction": 10,
+    "💎 UNDERDOGS": {
+        "kelly_fraction": 6,
         "min_confidence": 0.0,
-        "min_edge": 0.003,  # Edge minimum 0.3%
+        "min_edge": 0.01,  # Edge minimum 1%
         "max_value": 1.0,
         "min_odds": 2.0,  # Seulement cotes ≥2.0 (underdogs)
-        "max_odds": 10.0,
-        "max_bet_fraction": 0.15,
+        "max_odds": 5.0,
+        "max_bet_fraction": 0.10,
         "min_bet_pct": 0.01,
-        "description": "💎 Underdogs - ROI +4.6%, Profit 319€, DD 10%, focus sur les outsiders"
+        "description": "💎 UNDERDOGS - Profit 835€ | ROI 4.7% | DD 30% | Sharpe 0.45 | 8/12 ans | Focus outsiders, meilleur ROI"
     },
 }
 
