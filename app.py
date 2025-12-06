@@ -151,7 +151,7 @@ K_FACTOR = 24
 BASE_ELO = 1500.0
 
 # ============================================================================
-# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Grid Search 97,000 combinaisons
+# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Grid Search 96,000 combinaisons
 # Backtest 2014-2025 sur 4,959 combats UFC | Bankroll initiale: 1000€
 # Optimisation: Kelly fraction, Edge threshold, plage de cotes, max stake
 # ============================================================================
@@ -162,32 +162,43 @@ BETTING_STRATEGIES = {
         "min_edge": 0.001,  # Edge minimum 0.1%
         "max_value": 1.0,
         "min_odds": 1.0,
-        "max_odds": 5.0,
-        "max_bet_fraction": 0.10,
+        "max_odds": 3.5,
+        "max_bet_fraction": 0.08,
         "min_bet_pct": 0.01,
-        "description": "🚀 MAX PROFIT - Profit 13,887€ | ROI 3.5% | DD 38% | Sharpe 0.94 | 12/12 ans rentables | Pour parieurs expérimentés"
+        "description": "🚀 MAX PROFIT - Profit 15,681€ | ROI 3.7% | DD 38% | Sharpe 0.99 | 12/12 ans rentables | 4592 paris"
     },
-    "🥈 ÉQUILIBRÉE": {
-        "kelly_fraction": 6,
+    "🥈 ÉQUILIBRÉE (DD<35%)": {
+        "kelly_fraction": 5,
+        "min_confidence": 0.0,
+        "min_edge": 0.001,  # Edge minimum 0.1%
+        "max_value": 1.0,
+        "min_odds": 1.1,
+        "max_odds": 3.5,
+        "max_bet_fraction": 0.08,
+        "min_bet_pct": 0.01,
+        "description": "⚖️ ÉQUILIBRÉE - Profit 11,012€ | ROI 4.0% | DD 32% | Sharpe 1.01 | 12/12 ans rentables | Meilleur ratio"
+    },
+    "🥉 CONSERVATIVE (DD<30%)": {
+        "kelly_fraction": 5,
         "min_confidence": 0.0,
         "min_edge": 0.001,  # Edge minimum 0.1%
         "max_value": 1.0,
         "min_odds": 1.0,
-        "max_odds": 4.0,
-        "max_bet_fraction": 0.10,
+        "max_odds": 3.5,
+        "max_bet_fraction": 0.08,
         "min_bet_pct": 0.01,
-        "description": "⚖️ ÉQUILIBRÉE - Profit 8,175€ | ROI 3.8% | DD 30% | Sharpe 0.97 | 11/12 ans rentables | Meilleur ratio risque/rendement"
+        "description": "🛡️ PRUDENTE - Profit 10,773€ | ROI 3.8% | DD 29% | Sharpe 1.00 | 12/12 ans rentables | Risque modéré"
     },
-    "🥉 CONSERVATIVE": {
-        "kelly_fraction": 8,
+    "📈 MEILLEUR SHARPE": {
+        "kelly_fraction": 7,
         "min_confidence": 0.0,
-        "min_edge": 0.001,  # Edge minimum 0.1%
+        "min_edge": 0.0,  # Edge minimum 0%
         "max_value": 1.0,
-        "min_odds": 1.0,
-        "max_odds": 5.0,
-        "max_bet_fraction": 0.10,
+        "min_odds": 1.1,
+        "max_odds": 2.5,
+        "max_bet_fraction": 0.05,
         "min_bet_pct": 0.01,
-        "description": "🛡️ PRUDENTE - Profit 5,681€ | ROI 3.8% | DD 31% | Sharpe 0.90 | 11/12 ans rentables | Risque modéré"
+        "description": "📈 SHARPE MAX - Profit 5,643€ | ROI 4.2% | DD 33% | Sharpe 1.04 | 11/12 ans | Meilleur ratio risque/rendement"
     },
     "🔰 DÉBUTANT (Faible risque)": {
         "kelly_fraction": 15,
@@ -196,20 +207,9 @@ BETTING_STRATEGIES = {
         "max_value": 1.0,
         "min_odds": 1.1,
         "max_odds": 3.0,
-        "max_bet_fraction": 0.10,
+        "max_bet_fraction": 0.08,
         "min_bet_pct": 0.01,
-        "description": "🔰 DÉBUTANT - Profit 2,050€ | ROI 3.4% | DD 22% | Sharpe 0.76 | 9/12 ans | Drawdown minimal, idéal pour apprendre"
-    },
-    "💎 UNDERDOGS": {
-        "kelly_fraction": 6,
-        "min_confidence": 0.0,
-        "min_edge": 0.01,  # Edge minimum 1%
-        "max_value": 1.0,
-        "min_odds": 2.0,  # Seulement cotes ≥2.0 (underdogs)
-        "max_odds": 5.0,
-        "max_bet_fraction": 0.10,
-        "min_bet_pct": 0.01,
-        "description": "💎 UNDERDOGS - Profit 835€ | ROI 4.7% | DD 30% | Sharpe 0.45 | 8/12 ans | Focus outsiders, meilleur ROI"
+        "description": "🔰 DÉBUTANT - Profit 2,050€ | ROI 3.4% | DD 22% | Sharpe 0.76 | 9/12 ans | Drawdown minimal"
     },
 }
 
