@@ -150,52 +150,52 @@ for d in [DATA_DIR, RAW_DIR, INTERIM_DIR, PROC_DIR, BETS_DIR]:
 K_FACTOR = 24
 BASE_ELO = 1500.0
 
-# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Modèle Market + Reach + Age
-# Validé: ROI +18.1%, IC 95% [+5.5%, +30.9%], Proba profit 99.8%
+# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Backtest 2014-2025 (4810 paris)
+# Stratégie principale: Kelly 1/8, Edge 0.3%, ROI 3.6%, DD 23%, Sharpe 2.58, 11/12 années rentables
 BETTING_STRATEGIES = {
-    "EDGE ≥2% (RECOMMANDÉE)": {
-        "kelly_fraction": 20,
+    "KELLY 1/8 - OPTIMALE (RECOMMANDÉE)": {
+        "kelly_fraction": 8,
         "min_confidence": 0.0,
-        "min_edge": 0.02,  # Edge minimum 2%
+        "min_edge": 0.003,  # Edge minimum 0.3%
         "max_value": 1.0,
         "min_odds": 1.10,
         "max_odds": 10.0,
-        "max_bet_fraction": 0.05,
-        "min_bet_pct": 0.05,  # Flat 5%
-        "description": "🏆 RECOMMANDÉE - ROI +12.9%, 1588 paris, IC [+7.2%, +18.0%], plus de volume"
+        "max_bet_fraction": 0.15,
+        "min_bet_pct": 0.01,
+        "description": "🏆 OPTIMALE - ROI +3.6%, Profit 2626€, DD 23%, Sharpe 2.58, 11/12 ans rentables, 8 paris/sem"
     },
-    "EDGE ≥3% (ÉQUILIBRÉE)": {
-        "kelly_fraction": 20,
+    "KELLY 1/10 - MODÉRÉE": {
+        "kelly_fraction": 10,
         "min_confidence": 0.0,
-        "min_edge": 0.03,  # Edge minimum 3%
+        "min_edge": 0.003,  # Edge minimum 0.3%
         "max_value": 1.0,
         "min_odds": 1.10,
         "max_odds": 10.0,
-        "max_bet_fraction": 0.05,
-        "min_bet_pct": 0.05,
-        "description": "⚖️ Équilibrée - ROI +15.3%, 1027 paris, IC [+8.9%, +21.3%]"
+        "max_bet_fraction": 0.15,
+        "min_bet_pct": 0.01,
+        "description": "⚖️ Modérée - ROI +3.6%, Profit 1856€, DD 19%, Sharpe 2.58, 11/12 ans rentables"
     },
-    "EDGE ≥5% (CONSERVATRICE)": {
-        "kelly_fraction": 20,
+    "KELLY 1/15 - CONSERVATRICE": {
+        "kelly_fraction": 15,
         "min_confidence": 0.0,
-        "min_edge": 0.05,  # Edge minimum 5%
+        "min_edge": 0.003,  # Edge minimum 0.3%
         "max_value": 1.0,
         "min_odds": 1.10,
         "max_odds": 10.0,
-        "max_bet_fraction": 0.05,
-        "min_bet_pct": 0.05,
-        "description": "🔒 Conservatrice - ROI +24.7%, 312 paris, moins de volume"
+        "max_bet_fraction": 0.15,
+        "min_bet_pct": 0.01,
+        "description": "🔒 Conservatrice - ROI +3.5%, Profit 1047€, DD 13%, Sharpe 2.58, 11/12 ans rentables"
     },
-    "UNDERDOGS (VALUE)": {
-        "kelly_fraction": 20,
+    "UNDERDOGS KELLY 1/10": {
+        "kelly_fraction": 10,
         "min_confidence": 0.0,
-        "min_edge": 0.03,
+        "min_edge": 0.003,  # Edge minimum 0.3%
         "max_value": 1.0,
-        "min_odds": 2.0,  # Seulement cotes ≥2.0
+        "min_odds": 2.0,  # Seulement cotes ≥2.0 (underdogs)
         "max_odds": 10.0,
-        "max_bet_fraction": 0.05,
-        "min_bet_pct": 0.05,
-        "description": "💎 Value - Focus sur les underdogs (cotes ≥2.0)"
+        "max_bet_fraction": 0.15,
+        "min_bet_pct": 0.01,
+        "description": "💎 Underdogs - ROI +4.6%, Profit 319€, DD 10%, focus sur les outsiders"
     },
 }
 
