@@ -1873,8 +1873,14 @@ def add_bet(event_name, fighter_red, fighter_blue, pick, odds, stake,
     return True
 
 def get_open_bets():
-    """Récupère les paris ouverts"""
+    """Récupère les paris ouverts (avec sync GitHub)"""
     bets_file = BETS_DIR / "bets.csv"
+    
+    # ✅ Priorité GitHub sur Streamlit Cloud
+    if GITHUB_CONFIG.get("enabled"):
+        df, sha = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+        if df is not None:
+            return df[df["status"] == "open"]
     
     if not bets_file.exists():
         return pd.DataFrame()
@@ -1883,13 +1889,19 @@ def get_open_bets():
     return df[df["status"] == "open"]
 
 def close_bet(bet_id, result):
-    """Clôture un pari"""
+    """Clôture un pari (avec sync GitHub)"""
     bets_file = BETS_DIR / "bets.csv"
+    sha = None
     
-    if not bets_file.exists():
+    # ✅ Charger depuis GitHub si activé
+    if GITHUB_CONFIG.get("enabled"):
+        df, sha = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+        if df is None:
+            return False
+    elif bets_file.exists():
+        df = pd.read_csv(bets_file)
+    else:
         return False
-    
-    df = pd.read_csv(bets_file)
     
     if bet_id not in df["bet_id"].values:
         return False
@@ -1902,7 +1914,7 @@ def close_bet(bet_id, result):
         profit = stake * (odds - 1)
     elif result == "loss":
         profit = -stake
-    else:
+    else:  # cancelled / push
         profit = 0
     
     roi = (profit / stake) * 100 if stake > 0 else 0
@@ -1912,7 +1924,13 @@ def close_bet(bet_id, result):
     df.loc[df["bet_id"] == bet_id, "profit"] = profit
     df.loc[df["bet_id"] == bet_id, "roi"] = roi
     
+    # Sauvegarder localement
     df.to_csv(bets_file, index=False)
+    
+    # ✅ Sync GitHub
+    if GITHUB_CONFIG.get("enabled"):
+        save_file_to_github("bets/bets.csv", df.to_csv(index=False),
+                           f"Close bet #{bet_id}: {result}", GITHUB_CONFIG, sha)
     
     return True
 
@@ -2504,10 +2522,17 @@ def show_bankroll_page(current_bankroll):
     st.markdown("---")
     st.markdown("### 📊 Historique des paris")
     
-    bets_file = BETS_DIR / "bets.csv"
+    # ✅ Charger depuis GitHub si activé
+    all_bets = None
+    if GITHUB_CONFIG.get("enabled"):
+        all_bets, _ = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
     
-    if bets_file.exists():
-        all_bets = pd.read_csv(bets_file)
+    if all_bets is None:
+        bets_file = BETS_DIR / "bets.csv"
+        if bets_file.exists():
+            all_bets = pd.read_csv(bets_file)
+    
+    if all_bets is not None and not all_bets.empty:
         closed_bets = all_bets[all_bets['status'] == 'closed']
         
         if not closed_bets.empty:
