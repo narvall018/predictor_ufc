@@ -2004,20 +2004,6 @@ def show_home_page(model_data=None):
         </div>
         """, unsafe_allow_html=True)
     
-    st.markdown("### 🎯 Stratégie Edge ≥3% (Recommandée)")
-    
-    param_cols = st.columns(5)
-    with param_cols[0]:
-        st.metric("Edge min", "3%")
-    with param_cols[1]:
-        st.metric("Mise", "Flat 5%")
-    with param_cols[2]:
-        st.metric("IC 95%", "[+5.5%, +30.9%]")
-    with param_cols[3]:
-        st.metric("275 paris TEST", "2021-2025")
-    with param_cols[4]:
-        st.metric("Features", "Market+Reach+Age")
-    
     st.markdown("### 🎯 Fonctionnalités")
     
     cols = st.columns(3)
@@ -2404,7 +2390,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                         else:
                                             st.error("❌ Erreur lors de l'enregistrement")
                                 else:
-                                    st.info(f"ℹ️ Aucun pari recommandé (edge < {strategy['min_edge']:.0%} pour les deux combattants)")
+                                    st.info(f"ℹ️ Aucun pari recommandé (edge < {strategy['min_edge']:.1%} pour les deux combattants)")
                                     
                                     with st.expander("Voir les détails"):
                                         st.write(f"**{fight['red_fighter']}**: Edge {stake_a['edge']:.1%}")
