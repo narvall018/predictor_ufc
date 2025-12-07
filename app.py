@@ -18,6 +18,89 @@ import base64
 import io
 import urllib.request
 import urllib.error
+import hashlib
+
+# ============================================================================
+# 🔐 SYSTÈME DE PROFILS / SESSIONS
+# ============================================================================
+# Chaque profil a son propre mot de passe hashé, sa bankroll et son historique
+# Le profil "visiteur" a un accès limité (pas de bankroll, pas de paris)
+
+USER_PROFILES = {
+    "narvall018": {
+        "password_hash": "30085bd9342911e82fa94982d4cc7320921c8fdb5732ad7e8f335e7bf61919fc",  # Jumanji_75
+        "display_name": "🏆 narvall018",
+        "is_admin": True,
+        "bets_folder": "bets",  # Dossier des paris pour ce profil
+        "can_bet": True,
+        "can_view_bankroll": True,
+    },
+    # 🔮 Futurs profils à ajouter ici:
+    # "user2": {
+    #     "password_hash": "hash_sha256_du_mot_de_passe",
+    #     "display_name": "👤 User 2",
+    #     "is_admin": False,
+    #     "bets_folder": "bets_user2",
+    #     "can_bet": True,
+    #     "can_view_bankroll": True,
+    # },
+}
+
+def _hash_password(password):
+    """Hash un mot de passe en SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def authenticate_user(password):
+    """
+    Authentifie un utilisateur par son mot de passe.
+    Retourne le nom du profil si authentifié, None sinon.
+    """
+    password_hash = _hash_password(password)
+    
+    for username, profile in USER_PROFILES.items():
+        if profile["password_hash"] == password_hash:
+            return username
+    
+    return None
+
+def get_current_user():
+    """Retourne le profil de l'utilisateur connecté ou None"""
+    if 'logged_in_user' in st.session_state and st.session_state.logged_in_user:
+        username = st.session_state.logged_in_user
+        if username in USER_PROFILES:
+            return {
+                "username": username,
+                **USER_PROFILES[username]
+            }
+    return None
+
+def is_logged_in():
+    """Vérifie si un utilisateur est connecté"""
+    return get_current_user() is not None
+
+def can_access_betting():
+    """Vérifie si l'utilisateur peut accéder aux fonctions de paris"""
+    user = get_current_user()
+    return user is not None and user.get("can_bet", False)
+
+def can_view_bankroll():
+    """Vérifie si l'utilisateur peut voir la bankroll"""
+    user = get_current_user()
+    return user is not None and user.get("can_view_bankroll", False)
+
+def get_user_bets_folder():
+    """Retourne le dossier des paris pour l'utilisateur connecté"""
+    user = get_current_user()
+    if user:
+        return Path(user.get("bets_folder", "bets"))
+    return Path("bets")  # Par défaut
+
+def logout_user():
+    """Déconnecte l'utilisateur"""
+    if 'logged_in_user' in st.session_state:
+        del st.session_state.logged_in_user
+    if 'unlocked_api_key' in st.session_state:
+        del st.session_state.unlocked_api_key
 
 # ============================================================================
 # CONFIGURATION GITHUB (pour Streamlit Cloud)
@@ -221,21 +304,15 @@ BETTING_STRATEGIES = {
 # API gratuite: 500 requêtes/mois - https://the-odds-api.com
 # Sport key: mma_mixed_martial_arts
 
-# 🔐 Clé API encodée (protégée par mot de passe)
+# 🔐 Clé API encodée (disponible pour les utilisateurs connectés)
 _ENCODED_API_KEY = "MTI4NTcwMTFmZjI3MDcwYWYxZTI4NTc2MTZkYWM1YjQ="  # Base64
-_PASSWORD_HASH = "30085bd9342911e82fa94982d4cc7320921c8fdb5732ad7e8f335e7bf61919fc"  # SHA256
 
-def _decode_api_key(password):
-    """Décode la clé API si le mot de passe est correct"""
-    import hashlib
-    import base64
-    
-    # Vérifier le mot de passe
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
-    if password_hash != _PASSWORD_HASH:
+def _decode_api_key():
+    """Décode la clé API si l'utilisateur est connecté"""
+    # Seuls les utilisateurs connectés peuvent utiliser la clé intégrée
+    if not is_logged_in():
         return None
     
-    # Décoder la clé
     try:
         return base64.b64decode(_ENCODED_API_KEY).decode('utf-8')
     except:
@@ -245,9 +322,9 @@ def get_odds_api_key():
     """Récupère la clé API depuis les secrets Streamlit, session ou variable d'env"""
     key = None
     
-    # 1. Clé débloquée par mot de passe en session
-    if 'unlocked_api_key' in st.session_state and st.session_state.unlocked_api_key:
-        key = st.session_state.unlocked_api_key
+    # 1. Clé intégrée si utilisateur connecté
+    if is_logged_in():
+        key = _decode_api_key()
     
     # 2. Clé temporaire en session (saisie manuelle)
     if not key and 'temp_odds_api_key' in st.session_state and st.session_state.temp_odds_api_key:
@@ -2395,24 +2472,28 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     </div>
                                     """, unsafe_allow_html=True)
                                     
-                                    if st.button(f"💾 Enregistrer ce pari", key=f"save_bet_{i}_{j}"):
-                                        success = add_bet(
-                                            event_name=event['name'],
-                                            fighter_red=fight['red_fighter'],
-                                            fighter_blue=fight['blue_fighter'],
-                                            pick=best_bet['fighter'],
-                                            odds=best_bet['odds'],
-                                            stake=best_bet['stake_info']['stake'],
-                                            model_probability=best_bet['proba'],
-                                            kelly_fraction=strategy['kelly_fraction'],
-                                            edge=best_bet['stake_info']['edge'],
-                                            ev=best_bet['stake_info']['ev']
-                                        )
-                                        
-                                        if success:
-                                            st.success(f"✅ Pari enregistré : {best_bet['stake_info']['stake']:.2f}€ sur {best_bet['fighter']}")
-                                        else:
-                                            st.error("❌ Erreur lors de l'enregistrement")
+                                    # 🔒 Bouton d'enregistrement uniquement pour utilisateurs connectés
+                                    if can_access_betting():
+                                        if st.button(f"💾 Enregistrer ce pari", key=f"save_bet_{i}_{j}"):
+                                            success = add_bet(
+                                                event_name=event['name'],
+                                                fighter_red=fight['red_fighter'],
+                                                fighter_blue=fight['blue_fighter'],
+                                                pick=best_bet['fighter'],
+                                                odds=best_bet['odds'],
+                                                stake=best_bet['stake_info']['stake'],
+                                                model_probability=best_bet['proba'],
+                                                kelly_fraction=strategy['kelly_fraction'],
+                                                edge=best_bet['stake_info']['edge'],
+                                                ev=best_bet['stake_info']['ev']
+                                            )
+                                            
+                                            if success:
+                                                st.success(f"✅ Pari enregistré : {best_bet['stake_info']['stake']:.2f}€ sur {best_bet['fighter']}")
+                                            else:
+                                                st.error("❌ Erreur lors de l'enregistrement")
+                                    else:
+                                        st.info("🔒 Connectez-vous pour enregistrer ce pari")
                                 else:
                                     st.info(f"ℹ️ Aucun pari recommandé (edge < {strategy['min_edge']:.1%} pour les deux combattants)")
                                     
@@ -2436,6 +2517,17 @@ def show_bankroll_page(current_bankroll):
     """Affiche la page de gestion de bankroll"""
     
     st.title("💰 Gestion de la Bankroll")
+    
+    # 🔒 Vérification des permissions
+    if not can_view_bankroll():
+        st.error("🔒 **Accès refusé** - Connectez-vous pour accéder à cette page")
+        st.info("👈 Utilisez le formulaire de connexion dans la barre latérale")
+        return
+    
+    # Afficher le profil connecté
+    user = get_current_user()
+    if user:
+        st.success(f"📊 Bankroll de **{user['display_name']}**")
     
     col1, col2, col3 = st.columns(3)
     
@@ -3021,17 +3113,53 @@ def main():
     
     model_data = load_model_and_data()
     fighters_data = load_fighters_data()
-    current_bankroll = init_bankroll()
     
     st.markdown('<div class="main-title">🥊 Combat Sports Betting App 🥊</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Modèle ML sans data leakage - Stratégies optimisées Grid Search + AG</div>', unsafe_allow_html=True)
     
     # ============================================================================
-    # SIDEBAR - CONFIGURATION API COTES
+    # SIDEBAR - CONNEXION UTILISATEUR
     # ============================================================================
     with st.sidebar:
-        st.markdown("### ⚙️ Configuration")
+        st.markdown("### 👤 Profil")
         
+        current_user = get_current_user()
+        
+        if current_user:
+            # Utilisateur connecté
+            st.success(f"Connecté: {current_user['display_name']}")
+            
+            if st.button("🚪 Déconnexion", use_container_width=True):
+                logout_user()
+                st.rerun()
+            
+            # Afficher la bankroll si autorisé
+            if can_view_bankroll():
+                current_bankroll = init_bankroll()
+                st.metric("💰 Bankroll", f"{current_bankroll:.2f} €")
+        else:
+            # Formulaire de connexion
+            st.info("🔒 Connectez-vous pour accéder aux paris et à la bankroll")
+            
+            with st.form("login_form"):
+                password = st.text_input("Mot de passe", type="password")
+                submitted = st.form_submit_button("🔐 Connexion", use_container_width=True)
+                
+                if submitted and password:
+                    username = authenticate_user(password)
+                    if username:
+                        st.session_state.logged_in_user = username
+                        st.rerun()
+                    else:
+                        st.error("❌ Mot de passe incorrect")
+            
+            current_bankroll = 0  # Pas de bankroll pour les visiteurs
+        
+        st.markdown("---")
+        
+        # ============================================================================
+        # SIDEBAR - CONFIGURATION API COTES
+        # ============================================================================
         with st.expander("🔑 API Cotes (The Odds API)"):
             st.markdown("""
             **The Odds API** permet de récupérer automatiquement les cotes MMA.
@@ -3047,55 +3175,73 @@ def main():
             st.markdown(f"**Status:** {key_status}")
             
             if not current_key:
-                st.markdown("---")
-                st.markdown("**🔐 Débloquer avec mot de passe:**")
-                
-                password = st.text_input("Mot de passe", type="password", key="api_password")
-                if password:
-                    decoded_key = _decode_api_key(password)
-                    if decoded_key:
-                        st.session_state.unlocked_api_key = decoded_key
-                        st.success("✅ Clé API débloquée !")
-                        st.rerun()
-                    else:
-                        st.error("❌ Mot de passe incorrect")
-                
-                st.markdown("---")
-                st.markdown("**Ou saisir manuellement:**")
-                
-                # Option pour tester une clé temporairement
-                temp_key = st.text_input("Clé API (temporaire)", type="password", key="temp_api_key")
-                if temp_key:
-                    st.session_state.temp_odds_api_key = temp_key
-                    st.success("Clé temporaire enregistrée pour cette session")
+                if is_logged_in():
+                    st.success("🔓 Clé API disponible (connecté)")
+                else:
+                    st.markdown("---")
+                    st.markdown("**Saisir une clé manuellement:**")
+                    
+                    # Option pour tester une clé temporairement
+                    temp_key = st.text_input("Clé API (temporaire)", type="password", key="temp_api_key")
+                    if temp_key:
+                        st.session_state.temp_odds_api_key = temp_key
+                        st.success("Clé temporaire enregistrée pour cette session")
         
         st.markdown("---")
         st.markdown("### 📊 Stats rapides")
         if model_data:
             st.metric("Combattants", f"{len(model_data.get('elo_dict', {})):,}")
     
-    tabs = st.tabs([
-        "🏠 Accueil",
-        "📅 Événements à venir",
-        "💰 Gestion Bankroll",
-        "🏆 Classement Elo",
-        "🔄 Mise à jour"
-    ])
+    # ============================================================================
+    # ONGLETS PRINCIPAUX
+    # ============================================================================
     
-    with tabs[0]:
-        show_home_page(model_data)
-    
-    with tabs[1]:
-        show_events_page(model_data, fighters_data, current_bankroll)
-    
-    with tabs[2]:
-        show_bankroll_page(current_bankroll)
-    
-    with tabs[3]:
-        show_rankings_page(model_data)
-    
-    with tabs[4]:
-        show_stats_update_page()
+    # Définir les onglets selon le statut de connexion
+    if is_logged_in() and can_view_bankroll():
+        tabs = st.tabs([
+            "🏠 Accueil",
+            "📅 Événements à venir",
+            "💰 Gestion Bankroll",
+            "🏆 Classement Elo",
+            "🔄 Mise à jour"
+        ])
+        
+        with tabs[0]:
+            show_home_page(model_data)
+        
+        with tabs[1]:
+            show_events_page(model_data, fighters_data, current_bankroll)
+        
+        with tabs[2]:
+            show_bankroll_page(current_bankroll)
+        
+        with tabs[3]:
+            show_rankings_page(model_data)
+        
+        with tabs[4]:
+            show_stats_update_page()
+    else:
+        # Mode visiteur - accès limité
+        tabs = st.tabs([
+            "🏠 Accueil",
+            "📅 Événements à venir",
+            "🏆 Classement Elo",
+            "🔄 Mise à jour"
+        ])
+        
+        with tabs[0]:
+            show_home_page(model_data)
+        
+        with tabs[1]:
+            # Mode lecture seule pour les visiteurs
+            st.warning("🔒 **Mode visiteur** - Connectez-vous pour enregistrer des paris et gérer votre bankroll")
+            show_events_page(model_data, fighters_data, 0)  # Bankroll = 0 pour visiteurs
+        
+        with tabs[2]:
+            show_rankings_page(model_data)
+        
+        with tabs[3]:
+            show_stats_update_page()
 
 if __name__ == "__main__":
     main()
