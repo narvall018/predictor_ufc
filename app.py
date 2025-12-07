@@ -299,59 +299,6 @@ BETTING_STRATEGIES = {
 }
 
 # ============================================================================
-# 🧠 STRATÉGIES MODÈLE FEATURES (ML avec stats combattants)
-# Modèle: LogisticRegression L1 | Features: market_logit, elo_diff, reach_diff,
-# age_diff, exp_diff, kd_diff, sig_acc_diff, td_acc_diff, ctrl_diff, winrate_diff
-# Backtest 2015-2025 sur 4,350 combats | Validation temporelle 5 folds
-# ============================================================================
-FEATURES_BETTING_STRATEGIES = {
-    "🛡️ FEATURES SAFE": {
-        "kelly_fraction": 3.5,
-        "min_confidence": 0.0,
-        "min_edge": 0.07,  # Edge minimum 7%
-        "max_value": 1.0,
-        "min_odds": 1.5,
-        "max_odds": 2.5,
-        "max_bet_fraction": 0.12,
-        "min_bet_pct": 0.02,
-        "description": "🛡️ FEATURES SAFE - Profit 13k€ | ROI 17% | DD 34% | WR 64% | 381 paris | Modèle ML avancé"
-    },
-    "🟢 FEATURES ÉQUILIBRÉE": {
-        "kelly_fraction": 2.5,
-        "min_confidence": 0.0,
-        "min_edge": 0.07,  # Edge minimum 7%
-        "max_value": 1.0,
-        "min_odds": 1.5,
-        "max_odds": 2.5,
-        "max_bet_fraction": 0.12,
-        "min_bet_pct": 0.02,
-        "description": "🟢 FEATURES ÉQUILIBRÉE - Profit 33k€ | ROI 17% | DD 45% | WR 64% | 381 paris | ML optimisé"
-    },
-    "🔥 FEATURES AGRESSIVE": {
-        "kelly_fraction": 2.5,
-        "min_confidence": 0.0,
-        "min_edge": 0.07,  # Edge minimum 7%
-        "max_value": 1.0,
-        "min_odds": 1.3,
-        "max_odds": 2.5,
-        "max_bet_fraction": 0.15,
-        "min_bet_pct": 0.02,
-        "description": "🔥 FEATURES AGRESSIVE - Profit 50k€ | ROI 12% | DD 50% | WR 66% | 484 paris | Traders avancés"
-    },
-    "📈 FEATURES VOLUME": {
-        "kelly_fraction": 3.5,
-        "min_confidence": 0.0,
-        "min_edge": 0.04,  # Edge minimum 4%
-        "max_value": 1.0,
-        "min_odds": 1.2,
-        "max_odds": 4.0,
-        "max_bet_fraction": 0.08,
-        "min_bet_pct": 0.01,
-        "description": "📈 FEATURES VOLUME - Profit 13k€ | ROI 5% | DD 49% | WR 59% | 1623 paris | Plus de paris"
-    },
-}
-
-# ============================================================================
 # THE ODDS API - RÉCUPÉRATION AUTOMATIQUE DES COTES
 # ============================================================================
 # API gratuite: 500 requêtes/mois - https://the-odds-api.com
@@ -1466,68 +1413,6 @@ def load_model_and_data():
     
     return data
 
-# ============================================================================
-# 🧠 CHARGEMENT DU MODÈLE FEATURES (ML avec stats combattants)
-# ============================================================================
-@st.cache_data(ttl=3600)
-def load_features_model():
-    """Charge le modèle ML Features (avec stats combattants avancées)"""
-    model_path = PROC_DIR / "model_features.pkl"
-    
-    if not model_path.exists():
-        return None
-    
-    try:
-        model_info = joblib.load(model_path)
-        return {
-            "model": model_info.get("model"),
-            "scaler": model_info.get("scaler"),
-            "features": model_info.get("features", []),
-            "best_model_name": model_info.get("best_model_name"),
-            "training_date": model_info.get("training_date")
-        }
-    except Exception as e:
-        st.warning(f"⚠️ Erreur chargement modèle Features: {e}")
-        return None
-
-@st.cache_data(ttl=3600)
-def load_fighter_cumulative_stats():
-    """Charge les stats cumulées des combattants pour le modèle Features"""
-    appearances_path = RAW_DIR / "appearances.parquet"
-    
-    if not appearances_path.exists():
-        return {}
-    
-    try:
-        df = pd.read_parquet(appearances_path)
-        df['event_date'] = pd.to_datetime(df['event_date'])
-        df = df.sort_values('event_date')
-        
-        # Colonnes de stats à calculer
-        stat_cols = ['kd', 'sig_lnd', 'sig_att', 'td_lnd', 'td_att', 'ctrl_secs', 'result_win']
-        
-        # Calculer les stats cumulées pour chaque combattant
-        fighter_stats = {}
-        
-        for fighter_id, group in df.groupby('fighter_id'):
-            group = group.sort_values('event_date')
-            
-            # Moyennes sur tous les combats passés
-            stats = {
-                'n_fights': len(group),
-                'winrate': group['result_win'].mean() if 'result_win' in group else 0.5,
-                'kd_avg': group['kd'].mean() if 'kd' in group else 0,
-                'sig_acc': (group['sig_lnd'].sum() / group['sig_att'].sum()) if group['sig_att'].sum() > 0 else 0.5,
-                'td_acc': (group['td_lnd'].sum() / group['td_att'].sum()) if group['td_att'].sum() > 0 else 0.5,
-                'ctrl_avg': group['ctrl_secs'].mean() if 'ctrl_secs' in group else 0,
-            }
-            
-            fighter_stats[fighter_id] = stats
-        
-        return fighter_stats
-    except Exception as e:
-        return {}
-
 @st.cache_data(ttl=3600)
 def load_fighters_data():
     """Charge les données des combattants avec Elo POST et données bio (reach, age)"""
@@ -1928,126 +1813,6 @@ def predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a=None, odds_
     }
 
 # ============================================================================
-# 🧠 PRÉDICTION AVEC MODÈLE FEATURES (ML avancé)
-# ============================================================================
-def predict_fight_with_features(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b,
-                                features_model, fighter_stats):
-    """
-    Prédit l'issue d'un combat avec le modèle Features (ML avancé).
-    Utilise: market_logit, elo_diff, reach_diff, age_diff, exp_diff,
-             kd_diff, sig_acc_diff, td_acc_diff, ctrl_diff, winrate_diff
-    
-    Returns:
-        dict avec proba_a, proba_b, edge_a, edge_b, recommendation
-    """
-    if not features_model or not features_model.get("model"):
-        return None
-    
-    try:
-        # Calculer la probabilité marché (dévigée)
-        p_impl_a = 1 / odds_a
-        p_impl_b = 1 / odds_b
-        vig = p_impl_a + p_impl_b
-        proba_market = p_impl_a / vig
-        
-        # Market logit
-        proba_market_clipped = np.clip(proba_market, 0.01, 0.99)
-        market_logit = np.log(proba_market_clipped / (1 - proba_market_clipped))
-        
-        # Elo diff
-        elo_a = fighter_a_data.get('elo_global', BASE_ELO)
-        elo_b = fighter_b_data.get('elo_global', BASE_ELO)
-        elo_diff = elo_a - elo_b
-        
-        # Reach diff
-        reach_a = fighter_a_data.get('reach_cm')
-        reach_b = fighter_b_data.get('reach_cm')
-        reach_diff = 0.0
-        if reach_a is not None and reach_b is not None and not pd.isna(reach_a) and not pd.isna(reach_b):
-            reach_diff = float(reach_a) - float(reach_b)
-        
-        # Age diff
-        age_a = fighter_a_data.get('age')
-        age_b = fighter_b_data.get('age')
-        age_diff = 0.0
-        if age_a is not None and age_b is not None and not pd.isna(age_a) and not pd.isna(age_b):
-            age_diff = float(age_a) - float(age_b)
-        
-        # Récupérer les stats des combattants
-        fighter_a_id = fighter_a_data.get('fighter_id')
-        fighter_b_id = fighter_b_data.get('fighter_id')
-        
-        stats_a = fighter_stats.get(fighter_a_id, {})
-        stats_b = fighter_stats.get(fighter_b_id, {})
-        
-        # Features différentielles basées sur les stats
-        exp_diff = stats_a.get('n_fights', 0) - stats_b.get('n_fights', 0)
-        kd_diff = stats_a.get('kd_avg', 0) - stats_b.get('kd_avg', 0)
-        sig_acc_diff = stats_a.get('sig_acc', 0.5) - stats_b.get('sig_acc', 0.5)
-        td_acc_diff = stats_a.get('td_acc', 0.5) - stats_b.get('td_acc', 0.5)
-        ctrl_diff = stats_a.get('ctrl_avg', 0) - stats_b.get('ctrl_avg', 0)
-        winrate_diff = stats_a.get('winrate', 0.5) - stats_b.get('winrate', 0.5)
-        
-        # Créer le vecteur de features (dans l'ordre du modèle)
-        X = np.array([[market_logit, elo_diff, reach_diff, age_diff, exp_diff,
-                       kd_diff, sig_acc_diff, td_acc_diff, ctrl_diff, winrate_diff]])
-        
-        # Normaliser avec le scaler du modèle
-        scaler = features_model.get('scaler')
-        if scaler is not None:
-            X = scaler.transform(X)
-        
-        # Prédire
-        proba_a = features_model["model"].predict_proba(X)[0][1]
-        proba_b = 1 - proba_a
-        
-        # Calculer les edges
-        edge_a = proba_a - p_impl_a
-        edge_b = proba_b - p_impl_b
-        
-        # Déterminer la recommandation
-        threshold = 0.05  # Edge minimum pour Features
-        
-        if edge_a >= threshold:
-            recommendation = {
-                'bet_on': 'A',
-                'fighter': fighter_a_data.get('name', 'Fighter A'),
-                'odds': odds_a,
-                'edge': edge_a,
-                'proba_model': proba_a
-            }
-        elif edge_b >= threshold:
-            recommendation = {
-                'bet_on': 'B',
-                'fighter': fighter_b_data.get('name', 'Fighter B'),
-                'odds': odds_b,
-                'edge': edge_b,
-                'proba_model': proba_b
-            }
-        else:
-            recommendation = None
-        
-        return {
-            'proba_a': proba_a,
-            'proba_b': proba_b,
-            'proba_market': proba_market,
-            'edge_a': edge_a,
-            'edge_b': edge_b,
-            'reach_diff': reach_diff,
-            'age_diff': age_diff,
-            'elo_diff': elo_diff,
-            'exp_diff': exp_diff,
-            'recommendation': recommendation,
-            'winner': 'A' if proba_a > 0.5 else 'B',
-            'confidence': 'Élevée' if abs(proba_a - 0.5) > 0.15 else 'Modérée',
-            'model_type': 'features'
-        }
-        
-    except Exception as e:
-        st.error(f"Erreur prédiction Features: {e}")
-        return None
-
-# ============================================================================
 # SCRAPING ÉVÉNEMENTS UFC À VENIR
 # ============================================================================
 
@@ -2300,96 +2065,45 @@ def show_home_page(model_data=None):
     <div class="section-fade-in" style="text-align: center; padding: 50px 0;">
         <h1>🥊 Application de Paris Sportifs 🥊</h1>
         <p style="font-size: 1.3rem; color: #888;">
-            Modèles ML sans data leakage - Stratégies réalistes validées
+            Modèle ML sans data leakage - Stratégie réaliste validée
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Tabs pour les deux modèles
-    model_tabs = st.tabs(["📊 Modèle Standard", "🧠 Modèle Features (ML Avancé)"])
+    st.markdown("### 📊 Performance du Modèle (Market + Reach + Age)")
     
-    with model_tabs[0]:
-        st.markdown("### 📊 Modèle Standard (Market + Reach + Age)")
+    cols = st.columns(4)
+    with cols[0]:
         st.markdown("""
-        <p><b>Features:</b> market_logit, reach_diff, age_diff</p>
-        <p><b>Avantage:</b> Simple, robuste, fonctionne même avec peu de données</p>
+        <div class="metric-box">
+            <div class="metric-value">17-20%</div>
+            <div class="metric-label">ROI Backtest</div>
+        </div>
         """, unsafe_allow_html=True)
-        
-        cols = st.columns(4)
-        with cols[0]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value">17-20%</div>
-                <div class="metric-label">ROI Backtest</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[1]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value">11-12/12</div>
-                <div class="metric-label">Années profit</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[2]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value">34-40%</div>
-                <div class="metric-label">Max Drawdown</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[3]:
-            st.markdown(f"""
-            <div class="metric-box">
-                <div class="metric-value">{n_fighters}</div>
-                <div class="metric-label">Combattants</div>
-            </div>
-            """, unsafe_allow_html=True)
     
-    with model_tabs[1]:
-        st.markdown("### 🧠 Modèle Features (ML avec Stats Combattants)")
+    with cols[1]:
         st.markdown("""
-        <p><b>Features:</b> market_logit, elo_diff, reach_diff, age_diff, exp_diff, kd_diff, sig_acc_diff, td_acc_diff, ctrl_diff, winrate_diff</p>
-        <p><b>Avantage:</b> Utilise les stats de combat historiques (knockdowns, précision strikes, takedowns, contrôle)</p>
-        <p><b>Modèle:</b> LogisticRegression L1 | Validation: TimeSeriesSplit 5 folds</p>
+        <div class="metric-box">
+            <div class="metric-value">11-12/12</div>
+            <div class="metric-label">Années profit</div>
+        </div>
         """, unsafe_allow_html=True)
-        
-        cols = st.columns(4)
-        with cols[0]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value" style="color: #28a745;">17%</div>
-                <div class="metric-label">ROI (SAFE)</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[1]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value" style="color: #28a745;">64%</div>
-                <div class="metric-label">Win Rate</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[2]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value">34%</div>
-                <div class="metric-label">Max Drawdown</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[3]:
-            st.markdown("""
-            <div class="metric-box">
-                <div class="metric-value">4,350</div>
-                <div class="metric-label">Combats backtest</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.info("💡 **Conseil:** Le modèle Features fonctionne mieux avec les combattants ayant un historique (3+ combats)")
+    
+    with cols[2]:
+        st.markdown("""
+        <div class="metric-box">
+            <div class="metric-value">34-40%</div>
+            <div class="metric-label">Max Drawdown</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with cols[3]:
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-value">{n_fighters}</div>
+            <div class="metric-label">Combattants</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.markdown("### 🎯 Fonctionnalités")
     
@@ -2425,10 +2139,10 @@ def show_home_page(model_data=None):
     <div class="card">
         <ol style="line-height: 2;">
             <li><b>Événements à venir</b> : Récupérez les prochains combats et obtenez des recommandations de paris</li>
-            <li><b>Choisissez le modèle</b> : Standard (simple) ou Features (ML avancé avec stats combattants)</li>
             <li><b>Saisissez les cotes</b> : Entrez les cotes proposées par votre bookmaker</li>
             <li><b>Suivez les recommandations</b> : L'application calcule automatiquement les mises optimales selon Kelly</li>
             <li><b>Enregistrez vos paris</b> : Ajoutez les paris à votre historique pour suivre vos performances</li>
+            <li><b>Mettez à jour les résultats</b> : Après les combats, enregistrez les résultats pour suivre votre ROI</li>
         </ol>
     </div>
     """, unsafe_allow_html=True)
@@ -2488,48 +2202,20 @@ def show_events_page(model_data, fighters_data, current_bankroll):
         
         st.markdown("### ⚙️ Configuration")
         
-        col1, col2, col3 = st.columns([2, 2, 1])
+        col1, col2 = st.columns(2)
         
         with col1:
-            # Sélection du modèle
-            model_choice = st.selectbox(
-                "🧠 Modèle de prédiction",
-                options=["📊 Standard (Market+Reach+Age)", "🧠 Features (ML Avancé)"],
-                index=0,
-                help="Standard: 3 features simples | Features: 10 features ML avec stats combattants"
-            )
-            use_features_model = "Features" in model_choice
-            
-            # Sélection de la stratégie selon le modèle choisi
-            if use_features_model:
-                strategy_options = list(FEATURES_BETTING_STRATEGIES.keys())
-                strategy_dict = FEATURES_BETTING_STRATEGIES
-            else:
-                strategy_options = list(BETTING_STRATEGIES.keys())
-                strategy_dict = BETTING_STRATEGIES
-            
             strategy_name = st.selectbox(
                 "Stratégie de paris",
-                options=strategy_options,
+                options=list(BETTING_STRATEGIES.keys()),
                 index=0
             )
-            strategy = strategy_dict[strategy_name]
+            strategy = BETTING_STRATEGIES[strategy_name]
             
             st.info(f"📝 {strategy['description']}")
         
         with col2:
             st.metric("💰 Bankroll actuelle", f"{current_bankroll:.2f} €")
-            if use_features_model:
-                st.success("🧠 Modèle Features: Utilise stats combattants (KD, précision, TD, contrôle)")
-        
-        with col3:
-            if use_features_model:
-                st.markdown("**Features ML:**")
-                st.caption("• market_logit")
-                st.caption("• elo_diff")
-                st.caption("• reach/age_diff")
-                st.caption("• kd/sig/td_diff")
-                st.caption("• winrate_diff")
         
         with st.expander("📊 Détails de la stratégie"):
             param_cols = st.columns(3)
@@ -2541,17 +2227,6 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                 st.metric("Mise max", f"{strategy['max_bet_fraction']:.0%}")
             with param_cols[2]:
                 st.metric("Mise min", f"{strategy['min_bet_pct']:.1%}")
-                st.metric("Cotes", f"[{strategy['min_odds']:.1f} - {strategy['max_odds']:.1f}]")
-        
-        # Charger le modèle Features et les stats si nécessaire
-        features_model = None
-        fighter_stats = {}
-        if use_features_model:
-            features_model = load_features_model()
-            fighter_stats = load_fighter_cumulative_stats()
-            if not features_model:
-                st.warning("⚠️ Modèle Features non disponible. Utilisation du modèle standard.")
-                use_features_model = False
         
         tabs = st.tabs([event['name'] for event in st.session_state.events])
         
@@ -2703,30 +2378,17 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     key=f"odds_b_{i}_{j}"
                                 )
                             
-                            # Prédiction selon le modèle choisi
-                            if use_features_model and features_model:
-                                prediction = predict_fight_with_features(
-                                    fighter_a_data, fighter_b_data, model_data, 
-                                    odds_a, odds_b, features_model, fighter_stats
-                                )
-                                model_label = "🧠 Features ML"
-                            else:
-                                prediction = predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b)
-                                model_label = "📊 Standard"
+                            # Prédiction avec les cotes (nouveau modèle market + physique)
+                            prediction = predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b)
                             
                             if prediction:
                                 # Calcul des probabilités implicites du marché
                                 proba_market_a = 1 / odds_a
                                 proba_market_b = 1 / odds_b
                                 
-                                # Info supplémentaire pour modèle Features
-                                extra_info = ""
-                                if use_features_model and prediction.get('elo_diff') is not None:
-                                    extra_info = f"| Elo diff: {prediction.get('elo_diff', 0):.0f} | Exp diff: {prediction.get('exp_diff', 0):.0f}"
-                                
                                 st.markdown(f"""
                                 <div class="card">
-                                    <h5>📊 Prédiction ({model_label})</h5>
+                                    <h5>📊 Prédiction du modèle (mkt+phys)</h5>
                                     <table style="width:100%; text-align:center;">
                                         <tr>
                                             <th></th>
@@ -2749,7 +2411,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                             <td style="color: {'green' if prediction['proba_b'] - proba_market_b > 0 else 'red'};">{(prediction['proba_b'] - proba_market_b)*100:+.1f}%</td>
                                         </tr>
                                     </table>
-                                    <p style="margin-top: 10px;"><small>Reach diff: {prediction.get('reach_diff', 'N/A'):.1f} cm | Age diff: {prediction.get('age_diff', 'N/A'):.1f} ans {extra_info}</small></p>
+                                    <p style="margin-top: 10px;"><small>Reach diff: {prediction.get('reach_diff', 'N/A')} cm | Age diff: {prediction.get('age_diff', 'N/A')} ans</small></p>
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
