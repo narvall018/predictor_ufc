@@ -3220,8 +3220,7 @@ def main():
         tabs = st.tabs([
             "🏠 Accueil",
             "📅 Événements à venir",
-            "🏆 Classement Elo",
-            "🔄 Mise à jour"
+            "🏆 Classement Elo"
         ])
         
         with tabs[0]:
@@ -3234,9 +3233,6 @@ def main():
         
         with tabs[2]:
             show_rankings_page(model_data)
-        
-        with tabs[3]:
-            show_stats_update_page()
 
 if __name__ == "__main__":
     main()
