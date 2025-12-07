@@ -3186,11 +3186,6 @@ def main():
                     if temp_key:
                         st.session_state.temp_odds_api_key = temp_key
                         st.success("Clé temporaire enregistrée pour cette session")
-        
-        st.markdown("---")
-        st.markdown("### 📊 Stats rapides")
-        if model_data:
-            st.metric("Combattants", f"{len(model_data.get('elo_dict', {})):,}")
     
     # ============================================================================
     # ONGLETS PRINCIPAUX
