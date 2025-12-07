@@ -2133,10 +2133,10 @@ def show_events_page(model_data, fighters_data, current_bankroll):
             param_cols = st.columns(3)
             with param_cols[0]:
                 st.metric("Confiance min", f"{strategy['min_confidence']:.0%}")
-                st.metric("Edge min", f"{strategy['min_edge']:.0%}")
+                st.metric("Edge min", f"{strategy['min_edge']:.1%}")
             with param_cols[1]:
                 st.metric("Kelly fraction", f"1/{strategy['kelly_fraction']}")
-                st.metric("Mise max", f"{strategy['max_bet_fraction']:.1%}")
+                st.metric("Mise max", f"{strategy['max_bet_fraction']:.0%}")
             with param_cols[2]:
                 st.metric("Mise min", f"{strategy['min_bet_pct']:.1%}")
         
