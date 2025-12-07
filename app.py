@@ -221,22 +221,46 @@ BETTING_STRATEGIES = {
 # API gratuite: 500 requêtes/mois - https://the-odds-api.com
 # Sport key: mma_mixed_martial_arts
 
+# 🔐 Clé API encodée (protégée par mot de passe)
+_ENCODED_API_KEY = "MTI4NTcwMTFmZjI3MDcwYWYxZTI4NTc2MTZkYWM1YjQ="  # Base64
+_PASSWORD_HASH = "30085bd9342911e82fa94982d4cc7320921c8fdb5732ad7e8f335e7bf61919fc"  # SHA256
+
+def _decode_api_key(password):
+    """Décode la clé API si le mot de passe est correct"""
+    import hashlib
+    import base64
+    
+    # Vérifier le mot de passe
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    if password_hash != _PASSWORD_HASH:
+        return None
+    
+    # Décoder la clé
+    try:
+        return base64.b64decode(_ENCODED_API_KEY).decode('utf-8')
+    except:
+        return None
+
 def get_odds_api_key():
     """Récupère la clé API depuis les secrets Streamlit, session ou variable d'env"""
     key = None
     
-    # 1. Clé temporaire en session
-    if 'temp_odds_api_key' in st.session_state and st.session_state.temp_odds_api_key:
+    # 1. Clé débloquée par mot de passe en session
+    if 'unlocked_api_key' in st.session_state and st.session_state.unlocked_api_key:
+        key = st.session_state.unlocked_api_key
+    
+    # 2. Clé temporaire en session (saisie manuelle)
+    if not key and 'temp_odds_api_key' in st.session_state and st.session_state.temp_odds_api_key:
         key = st.session_state.temp_odds_api_key
     
-    # 2. Secrets Streamlit
+    # 3. Secrets Streamlit
     if not key:
         try:
             key = st.secrets.get("ODDS_API_KEY", "")
         except:
             pass
     
-    # 3. Variable d'environnement
+    # 4. Variable d'environnement
     if not key:
         key = os.environ.get("ODDS_API_KEY", "")
     
@@ -3023,7 +3047,21 @@ def main():
             st.markdown(f"**Status:** {key_status}")
             
             if not current_key:
-                st.info("💡 Ajoutez `ODDS_API_KEY` dans les secrets Streamlit ou comme variable d'environnement.")
+                st.markdown("---")
+                st.markdown("**🔐 Débloquer avec mot de passe:**")
+                
+                password = st.text_input("Mot de passe", type="password", key="api_password")
+                if password:
+                    decoded_key = _decode_api_key(password)
+                    if decoded_key:
+                        st.session_state.unlocked_api_key = decoded_key
+                        st.success("✅ Clé API débloquée !")
+                        st.rerun()
+                    else:
+                        st.error("❌ Mot de passe incorrect")
+                
+                st.markdown("---")
+                st.markdown("**Ou saisir manuellement:**")
                 
                 # Option pour tester une clé temporairement
                 temp_key = st.text_input("Clé API (temporaire)", type="password", key="temp_api_key")
