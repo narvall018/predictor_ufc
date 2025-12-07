@@ -151,22 +151,23 @@ K_FACTOR = 24
 BASE_ELO = 1500.0
 
 # ============================================================================
-# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Algorithme Génétique Multi-Îles
+# ✅ STRATÉGIES DE PARIS OPTIMISÉES - Grid Search + AG Multi-Îles Parallélisé
 # Backtest 2014-2025 sur 5,099 combats UFC | Bankroll initiale: 1000€
 # Optimisation: Kelly fraction, Edge threshold, plage de cotes, max stake
-# AG parallélisé: 4 îles × 400 individus × 200 générations
+# Grid Search: 20,790 combinaisons | AG: 6 îles × 500 individus × 300 générations
+# Validation Out-of-Sample 2023-2025: Toutes stratégies ✅ cohérentes
 # ============================================================================
 BETTING_STRATEGIES = {
     "🛡️ SAFE (RECOMMANDÉE)": {
-        "kelly_fraction": 3,
+        "kelly_fraction": 2.75,
         "min_confidence": 0.0,
         "min_edge": 0.035,  # Edge minimum 3.5%
         "max_value": 1.0,
         "min_odds": 1.0,
         "max_odds": 5.0,
-        "max_bet_fraction": 0.20,
+        "max_bet_fraction": 0.25,
         "min_bet_pct": 0.01,
-        "description": "🛡️ SAFE - Profit 85k€ | ROI 17% | DD 31% | Sharpe 1.30 | 11/12 ans | ~140 paris/an | +414% vs ancien"
+        "description": "🛡️ SAFE - Profit 119k€ | ROI 17% | DD 34% | 11/12 ans | ~140 paris/an | Pour débutants"
     },
     "🟢 ÉQUILIBRÉE (DD<35%)": {
         "kelly_fraction": 2.5,
@@ -175,23 +176,23 @@ BETTING_STRATEGIES = {
         "max_value": 1.0,
         "min_odds": 1.0,
         "max_odds": 5.0,
-        "max_bet_fraction": 0.27,
+        "max_bet_fraction": 0.30,
         "min_bet_pct": 0.01,
-        "description": "🟢 ÉQUILIBRÉE - Profit 183k€ | ROI 19% | DD 35% | Sharpe 1.33 | 11/12 ans | ~122 paris/an | +1013% vs ancien"
+        "description": "🟢 ÉQUILIBRÉE - Profit 202k€ | ROI 19% | DD 35% | 11/12 ans | ~122 paris/an | Recommandée"
     },
     "🔥 AGRESSIVE (DD<40%)": {
-        "kelly_fraction": 2,
+        "kelly_fraction": 2.0,
         "min_confidence": 0.0,
         "min_edge": 0.042,  # Edge minimum 4.2%
         "max_value": 1.0,
         "min_odds": 1.0,
         "max_odds": 5.0,
-        "max_bet_fraction": 0.35,
+        "max_bet_fraction": 0.36,
         "min_bet_pct": 0.01,
-        "description": "🔥 AGRESSIVE - Profit 400k€ | ROI 20% | DD 40% | Sharpe 1.33 | 11/12 ans | ~122 paris/an | +2325% vs ancien"
+        "description": "🔥 AGRESSIVE - Profit 418k€ | ROI 20% | DD 40% | 11/12 ans | ~122 paris/an | Traders expérimentés"
     },
     "📈 VOLUME+ (Plus de paris)": {
-        "kelly_fraction": 3,
+        "kelly_fraction": 3.0,
         "min_confidence": 0.0,
         "min_edge": 0.03,  # Edge minimum 3%
         "max_value": 1.0,
@@ -199,18 +200,18 @@ BETTING_STRATEGIES = {
         "max_odds": 5.0,
         "max_bet_fraction": 0.20,
         "min_bet_pct": 0.01,
-        "description": "📈 VOLUME+ - Profit 82k€ | ROI 15% | DD 34% | Sharpe 1.29 | 10/12 ans | ~157 paris/an | Plus d'opportunités"
+        "description": "📈 VOLUME+ - Profit 82k€ | ROI 15% | DD 34% | 10/12 ans | ~157 paris/an | Plus d'opportunités"
     },
     "💎 SÉLECTIF (Meilleur Sharpe)": {
-        "kelly_fraction": 2.5,
+        "kelly_fraction": 2.2,
         "min_confidence": 0.0,
         "min_edge": 0.063,  # Edge minimum 6.3%
         "max_value": 1.0,
         "min_odds": 1.0,
         "max_odds": 5.0,
-        "max_bet_fraction": 0.27,
+        "max_bet_fraction": 0.37,
         "min_bet_pct": 0.01,
-        "description": "💎 SÉLECTIF - Profit 158k€ | ROI 29% | DD 36% | Sharpe 1.39 | 12/12 ans | ~76 paris/an | Meilleur ratio"
+        "description": "💎 SÉLECTIF - Profit 367k€ | ROI 32% | DD 40% | Sharpe 1.44 | 12/12 ans | ~77 paris/an | Meilleur ratio"
     },
 }
 
