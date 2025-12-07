@@ -1975,24 +1975,24 @@ def show_home_page(model_data=None):
     with cols[0]:
         st.markdown("""
         <div class="metric-box">
-            <div class="metric-value">60%</div>
-            <div class="metric-label">Win Rate TEST</div>
+            <div class="metric-value">17-20%</div>
+            <div class="metric-label">ROI Backtest</div>
         </div>
         """, unsafe_allow_html=True)
     
     with cols[1]:
         st.markdown("""
         <div class="metric-box">
-            <div class="metric-value">+18.1%</div>
-            <div class="metric-label">ROI TEST</div>
+            <div class="metric-value">11-12/12</div>
+            <div class="metric-label">Années profit</div>
         </div>
         """, unsafe_allow_html=True)
     
     with cols[2]:
         st.markdown("""
         <div class="metric-box">
-            <div class="metric-value">99.8%</div>
-            <div class="metric-label">Proba Profit</div>
+            <div class="metric-value">34-40%</div>
+            <div class="metric-label">Max Drawdown</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -2497,26 +2497,35 @@ def show_bankroll_page(current_bankroll):
                 
                 with result_cols[0]:
                     if st.button("✅ Victoire", key=f"win_{int(bet['bet_id'])}"):
-                        close_bet(int(bet['bet_id']), "win")
-                        profit = bet['stake'] * (bet['odds'] - 1)
-                        new_bankroll = current_bankroll + profit
-                        update_bankroll(new_bankroll, "win", f"Pari #{int(bet['bet_id'])} gagné")
-                        st.success(f"✅ Pari gagné ! +{profit:.2f}€")
-                        st.rerun()
+                        if close_bet(int(bet['bet_id']), "win"):
+                            profit = bet['stake'] * (bet['odds'] - 1)
+                            new_bankroll = current_bankroll + profit
+                            update_bankroll(new_bankroll, "win", f"Pari #{int(bet['bet_id'])} gagné")
+                            st.success(f"✅ Pari gagné ! +{profit:.2f}€")
+                            time.sleep(0.5)  # Attendre sync GitHub
+                            st.rerun()
+                        else:
+                            st.error("❌ Erreur lors de la clôture du pari")
                 
                 with result_cols[1]:
                     if st.button("❌ Défaite", key=f"loss_{int(bet['bet_id'])}"):
-                        close_bet(int(bet['bet_id']), "loss")
-                        new_bankroll = current_bankroll - bet['stake']
-                        update_bankroll(new_bankroll, "loss", f"Pari #{int(bet['bet_id'])} perdu")
-                        st.warning(f"❌ Pari perdu ! -{bet['stake']:.2f}€")
-                        st.rerun()
+                        if close_bet(int(bet['bet_id']), "loss"):
+                            new_bankroll = current_bankroll - bet['stake']
+                            update_bankroll(new_bankroll, "loss", f"Pari #{int(bet['bet_id'])} perdu")
+                            st.warning(f"❌ Pari perdu ! -{bet['stake']:.2f}€")
+                            time.sleep(0.5)  # Attendre sync GitHub
+                            st.rerun()
+                        else:
+                            st.error("❌ Erreur lors de la clôture du pari")
                 
                 with result_cols[2]:
                     if st.button("⚪ Annulé", key=f"void_{int(bet['bet_id'])}"):
-                        close_bet(int(bet['bet_id']), "void")
-                        st.info("⚪ Pari annulé")
-                        st.rerun()
+                        if close_bet(int(bet['bet_id']), "void"):
+                            st.info("⚪ Pari annulé")
+                            time.sleep(0.5)  # Attendre sync GitHub
+                            st.rerun()
+                        else:
+                            st.error("❌ Erreur lors de l'annulation du pari")
     
     else:
         st.info("📭 Aucun pari en cours")
@@ -2991,7 +3000,7 @@ def main():
     current_bankroll = init_bankroll()
     
     st.markdown('<div class="main-title">🥊 Combat Sports Betting App 🥊</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Modèle ML sans data leakage - ROI +20% TRAIN / +50% TEST</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Modèle ML sans data leakage - Stratégies optimisées Grid Search + AG</div>', unsafe_allow_html=True)
     
     # ============================================================================
     # SIDEBAR - CONFIGURATION API COTES
