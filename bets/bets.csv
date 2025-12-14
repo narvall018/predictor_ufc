@@ -5,5 +5,5 @@ bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kel
 4,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Alexandre Pantoja,Joshua Van,Joshua Van,2.84,50.0,0.3728596344353005,20.0,0.0207469583789625,0.0589213617962536,closed,win,92.0,184.0
 5,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Henry Cejudo,Payton Talbott,Payton Talbott,1.4,50.0,0.7455685043237541,20.0,0.0312827900380398,0.0437959060532557,closed,win,20.0,39.99999999999999
 6,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Marvin Vettori,Brunno Ferreira,Marvin Vettori,1.82,50.0,0.5783082132051048,20.0,0.0288576637545554,0.0525209480332908,closed,loss,-50.0,-100.0
-7,2025-12-07 11:26,UFC Fight Night: Royval vs. Kape,Jamey-Lyn Horth,Tereza Bleda,Tereza Bleda,1.67,35.74267257946828,0.6367021119093885,2.75,0.0378997166998076,0.0632925268886788,open,,0.0,0.0
-8,2025-12-07 11:26,UFC Fight Night: Royval vs. Kape,Kennedy Nzechukwu,Marcus Buchecha,Kennedy Nzechukwu,1.65,45.388704951908025,0.6533177872535265,2.75,0.04725718119292044,0.07797434896831867,open,,0.0,0.0
+7,2025-12-07 11:26,UFC Fight Night: Royval vs. Kape,Jamey-Lyn Horth,Tereza Bleda,Tereza Bleda,1.67,35.74267257946828,0.6367021119093885,2.75,0.0378997166998076,0.0632925268886788,closed,loss,-35.74267257946828,-100.0
+8,2025-12-07 11:26,UFC Fight Night: Royval vs. Kape,Kennedy Nzechukwu,Marcus Buchecha,Kennedy Nzechukwu,1.65,45.388704951908025,0.6533177872535265,2.75,0.0472571811929204,0.0779743489683186,open,,0.0,0.0
