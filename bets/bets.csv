@@ -7,4 +7,4 @@ bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kel
 6,2025-12-06 15:59,UFC 323: Dvalishvili vs. Yan 2,Marvin Vettori,Brunno Ferreira,Marvin Vettori,1.82,50.0,0.5783082132051048,20.0,0.0288576637545554,0.0525209480332908,closed,loss,-50.0,-100.0
 7,2025-12-07 11:26,UFC Fight Night: Royval vs. Kape,Jamey-Lyn Horth,Tereza Bleda,Tereza Bleda,1.67,35.74267257946828,0.6367021119093885,2.75,0.0378997166998076,0.0632925268886788,closed,loss,-35.74267257946828,-100.0
 8,2025-12-07 11:26,UFC Fight Night: Royval vs. Kape,Kennedy Nzechukwu,Marcus Buchecha,Kennedy Nzechukwu,1.65,45.388704951908025,0.6533177872535265,2.75,0.0472571811929204,0.0779743489683186,closed,loss,-45.388704951908025,-100.0
-9,2026-02-02 21:55,UFC Fight Night: Bautista vs. Oliveira,Amir Albazi,Kyoji Horiguchi,Amir Albazi,3.75,20.76099282271928,0.3103078711129307,2.75,0.043641204446264015,0.16365451667348996,open,,0.0,0.0
+9,2026-02-02 21:55,UFC Fight Night: Bautista vs. Oliveira,Amir Albazi,Kyoji Horiguchi,Amir Albazi,3.75,20.76099282271928,0.3103078711129307,2.75,0.043641204446264,0.1636545166734899,closed,loss,-20.76099282271928,-100.0
