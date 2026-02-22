@@ -10,3 +10,4 @@ bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kel
 9,2026-02-02 21:55,UFC Fight Night: Bautista vs. Oliveira,Amir Albazi,Kyoji Horiguchi,Amir Albazi,3.75,20.76099282271928,0.3103078711129307,2.75,0.043641204446264,0.1636545166734899,closed,loss,-20.76099282271928,-100.0
 10,2026-02-19 12:07,UFC Fight Night: Strickland vs. Hernandez,Serghei Spivac,Ante Delija,Serghei Spivac,2.13,24.471523965072087,0.5075207619046446,2.75,0.0380371938295271,0.0810192228568928,closed,win,27.652822080531458,113.0
 11,2026-02-21 22:03,UFC Fight Night: Strickland vs. Hernandez,Zach Reese,Michel Pereira,Zach Reese,2.48,20.34252432055776,0.4387941378793871,2.75,0.0355683314277741,0.0882094619408799,closed,loss,-20.34252432055776,-100.0
+12,2026-02-22 12:37,UFC Fight Night: Moreno vs. Kavanagh,Daniel Zellhuber,King Green,Daniel Zellhuber,1.2,73.47795706374845,0.868936207548763,2.75,0.035602874215429625,0.04272344905851555,open,,0.0,0.0
