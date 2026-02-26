@@ -299,6 +299,13 @@ BETTING_STRATEGIES = {
 }
 
 # ============================================================================
+# MODÈLE WALK-FORWARD (OPTIONNEL)
+# ============================================================================
+
+WF_MODEL_ARTIFACT   = PROC_DIR / "wf_value_model.pkl"
+LGBM_MODEL_ARTIFACT = PROC_DIR / "lgbm_value_model.pkl"
+
+# ============================================================================
 # THE ODDS API - RÉCUPÉRATION AUTOMATIQUE DES COTES
 # ============================================================================
 # API gratuite: 500 requêtes/mois - https://the-odds-api.com
@@ -1287,6 +1294,22 @@ def load_model_and_data():
         "features": None,  # Liste des features du modèle
         "feature_medians": {},  # Valeurs médianes pour imputation
         "strategy": {},  # Stratégie de mise
+        "wf_model": None,
+        "wf_imputer": None,
+        "wf_scaler": None,
+        "wf_feature_cols": [],
+        "wf_feature_medians": {},
+        "wf_strategy": {},
+        # ── Nouveau modèle LightGBM Value Betting ──────────────────────────
+        "lgbm_model": None,
+        "lgbm_imputer": None,
+        "lgbm_feature_cols": [],
+        "lgbm_feature_medians": {},
+        "lgbm_bookmakers": [],
+        "lgbm_bk_prob_cols_A": [],
+        "lgbm_wclass_feat_cols": [],
+        "lgbm_strategy": {},
+        # ───────────────────────────────────────────────────────────────────
         "ratings": None,
         "elo_dict": {},
         "fighter_bio": {}  # Données biographiques (reach, age)
@@ -1305,7 +1328,49 @@ def load_model_and_data():
             data["feat_cols"] = data["features"]
         except Exception as e:
             st.warning(f"⚠️ Erreur chargement modèle: {e}")
-    
+
+    # Charger le modèle walk-forward (optionnel)
+    if WF_MODEL_ARTIFACT.exists():
+        try:
+            wf_info = joblib.load(WF_MODEL_ARTIFACT)
+            data["wf_model"] = wf_info.get("model")
+            # Compatibilité pickle sklearn cross-version
+            if data["wf_model"] is not None and not hasattr(data["wf_model"], "multi_class"):
+                data["wf_model"].multi_class = "auto"
+            data["wf_imputer"] = wf_info.get("imputer")
+            data["wf_scaler"] = wf_info.get("scaler")
+            data["wf_feature_cols"] = wf_info.get("feature_cols", [])
+            data["wf_feature_medians"] = wf_info.get("feature_medians", {})
+            data["wf_strategy"] = wf_info.get(
+                "strategy",
+                {
+                    "edge_threshold": 0.08,
+                    "flat_stake_eur": 10.0,
+                    "skip_new_fighters": True,
+                },
+            )
+        except Exception as e:
+            st.warning(f"⚠️ Erreur chargement modèle walk-forward: {e}")
+
+    # ── Charger le modèle LightGBM Value Betting (nouveau) ──────────────────
+    if LGBM_MODEL_ARTIFACT.exists():
+        try:
+            lgbm_info = joblib.load(LGBM_MODEL_ARTIFACT)
+            data["lgbm_model"]          = lgbm_info.get("model")
+            data["lgbm_imputer"]        = lgbm_info.get("imputer")
+            data["lgbm_feature_cols"]   = lgbm_info.get("feature_cols", [])
+            data["lgbm_feature_medians"]= lgbm_info.get("feature_medians", {})
+            data["lgbm_bookmakers"]     = lgbm_info.get("bookmakers", [])
+            data["lgbm_bk_prob_cols_A"] = lgbm_info.get("bk_prob_cols_A", [])
+            data["lgbm_wclass_feat_cols"]= lgbm_info.get("wclass_feat_cols", [])
+            data["lgbm_strategy"]       = lgbm_info.get(
+                "strategy",
+                {"edge_threshold": 0.04, "kelly_fraction": 5.0,
+                 "max_bet_fraction": 0.20, "min_bet_pct": 0.01},
+            )
+        except Exception as e:
+            st.warning(f"⚠️ Erreur chargement modèle LightGBM: {e}")
+
     # Charger les données biographiques (reach, dob)
     bio_path = RAW_DIR / "fighter_bio.parquet"
     if bio_path.exists():
@@ -1688,6 +1753,393 @@ def calculate_kelly_stake(proba_model, odds, bankroll, strategy_params):
         'reason': 'OK'
     }
 
+def calculate_flat_stake_wf(proba_model, proba_market, odds, bankroll, wf_params):
+    """Calcule une mise fixe pour le moteur walk-forward."""
+    edge_threshold = float(wf_params.get("edge_threshold", 0.08))
+    flat_stake_eur = float(wf_params.get("flat_stake_eur", 10.0))
+    min_odds = float(wf_params.get("min_odds", 1.01))
+    max_odds = float(wf_params.get("max_odds", 50.0))
+
+    if odds <= 0 or pd.isna(proba_model) or pd.isna(proba_market):
+        return {
+            "stake": 0.0,
+            "edge": np.nan,
+            "ev": np.nan,
+            "should_bet": False,
+            "kelly_pct": 0.0,
+            "reason": "Données invalides",
+        }
+
+    edge = float(proba_model - proba_market)
+    ev = float((proba_model * odds) - 1.0)
+    should_bet = (edge >= edge_threshold) and (ev > 0) and (odds >= min_odds) and (odds <= max_odds)
+
+    if not should_bet:
+        reason = []
+        if edge < edge_threshold:
+            reason.append(f"Edge {edge:.1%} < {edge_threshold:.1%}")
+        if ev <= 0:
+            reason.append(f"EV {ev:.1%} <= 0")
+        if odds < min_odds:
+            reason.append(f"Cote {odds:.2f} < {min_odds:.2f}")
+        if odds > max_odds:
+            reason.append(f"Cote {odds:.2f} > {max_odds:.2f}")
+        return {
+            "stake": 0.0,
+            "edge": edge,
+            "ev": ev,
+            "should_bet": False,
+            "kelly_pct": 0.0,
+            "reason": ", ".join(reason) if reason else "Contraintes WF non respectées",
+        }
+
+    stake = max(0.0, min(flat_stake_eur, bankroll))
+    stake_pct = (stake / bankroll) if bankroll > 0 else 0.0
+    return {
+        "stake": stake,
+        "edge": edge,
+        "ev": ev,
+        "should_bet": stake > 0,
+        "kelly_pct": stake_pct,
+        "reason": "OK (flat)",
+    }
+
+def _safe_num(x):
+    """Convertit une valeur en float de manière robuste."""
+    try:
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            return np.nan
+        return float(x)
+    except Exception:
+        return np.nan
+
+def _safe_ratio(num, den):
+    """Calcule un ratio robuste avec protection div/0."""
+    num = _safe_num(num)
+    den = _safe_num(den)
+    if pd.isna(num) or pd.isna(den) or den == 0:
+        return np.nan
+    return num / den
+
+def build_wf_live_feature_row(fighter_a_data, fighter_b_data, odds_a, odds_b, model_data):
+    """Construit le vecteur de features live pour le modèle walk-forward."""
+    wf_cols = model_data.get("wf_feature_cols", [])
+    wf_medians = model_data.get("wf_feature_medians", {})
+    if not wf_cols:
+        return None
+
+    row = {}
+    for col in wf_cols:
+        val = wf_medians.get(col, 0.0)
+        if pd.isna(val):
+            val = 0.0
+        row[col] = float(val)
+
+    # Features bookmaker live
+    p_impl_a = 1.0 / odds_a
+    p_impl_b = 1.0 / odds_b
+    overround = p_impl_a + p_impl_b
+    p_norm_a = p_impl_a / overround if overround > 0 else np.nan
+    margin = overround - 1.0 if overround > 0 else np.nan
+
+    for col in [
+        "prob_consensus_mean",
+        "prob_consensus_max",
+        "opening_prob_mean",
+        "prob_Pinnacle",
+        "prob_DraftKings",
+        "prob_FanDuel",
+        "prob_BetMGM",
+    ]:
+        if col in row and not pd.isna(p_norm_a):
+            row[col] = float(p_norm_a)
+
+    if "margin_mean" in row and not pd.isna(margin):
+        row["margin_mean"] = float(margin)
+    if "drift_mean" in row:
+        row["drift_mean"] = 0.0
+    if "fav_ratio_A" in row and not pd.isna(p_norm_a):
+        row["fav_ratio_A"] = 1.0 if p_norm_a > 0.5 else 0.0
+    if "n_bookmakers" in row:
+        row["n_bookmakers"] = 1.0
+
+    # Features bio/stat A-B si dispo live
+    age_a = _safe_num(fighter_a_data.get("age"))
+    age_b = _safe_num(fighter_b_data.get("age"))
+    reach_a = _safe_num(fighter_a_data.get("reach_cm"))
+    reach_b = _safe_num(fighter_b_data.get("reach_cm"))
+    sig_acc_a = _safe_ratio(fighter_a_data.get("sig_lnd"), fighter_a_data.get("sig_att"))
+    sig_acc_b = _safe_ratio(fighter_b_data.get("sig_lnd"), fighter_b_data.get("sig_att"))
+    td_acc_a = _safe_ratio(fighter_a_data.get("td_lnd"), fighter_a_data.get("td_att"))
+    td_acc_b = _safe_ratio(fighter_b_data.get("td_lnd"), fighter_b_data.get("td_att"))
+    sub_a = _safe_num(fighter_a_data.get("sub_att"))
+    sub_b = _safe_num(fighter_b_data.get("sub_att"))
+
+    if "diff_age" in row and not (pd.isna(age_a) or pd.isna(age_b)):
+        row["diff_age"] = float(age_a - age_b)
+    if "diff_reach" in row and not (pd.isna(reach_a) or pd.isna(reach_b)):
+        row["diff_reach"] = float(reach_a - reach_b)
+    if "diff_sig_strike_acc" in row and not (pd.isna(sig_acc_a) or pd.isna(sig_acc_b)):
+        row["diff_sig_strike_acc"] = float(sig_acc_a - sig_acc_b)
+    if "diff_td_acc" in row and not (pd.isna(td_acc_a) or pd.isna(td_acc_b)):
+        row["diff_td_acc"] = float(td_acc_a - td_acc_b)
+    if "diff_sub_att" in row and not (pd.isna(sub_a) or pd.isna(sub_b)):
+        row["diff_sub_att"] = float(sub_a - sub_b)
+
+    if "stance_Unknown_vs_Unknown" in row:
+        row["stance_Unknown_vs_Unknown"] = 1.0
+    if "wc_Unknown" in row:
+        row["wc_Unknown"] = 1.0
+
+    return pd.DataFrame([row], columns=wf_cols)
+
+def predict_fight_walkforward_with_odds(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b):
+    """Prédit l'issue d'un combat avec le modèle walk-forward."""
+    if not model_data.get("wf_model") or not model_data.get("wf_imputer") or not model_data.get("wf_scaler"):
+        return None
+
+    try:
+        X = build_wf_live_feature_row(fighter_a_data, fighter_b_data, odds_a, odds_b, model_data)
+        if X is None:
+            return None
+
+        X_imp = model_data["wf_imputer"].transform(X)
+        X_scaled = model_data["wf_scaler"].transform(X_imp)
+        proba_a = float(model_data["wf_model"].predict_proba(X_scaled)[0][1])
+        proba_b = 1.0 - proba_a
+
+        p_impl_a = 1 / odds_a
+        p_impl_b = 1 / odds_b
+        s = p_impl_a + p_impl_b
+        proba_market_a = p_impl_a / s if s > 0 else np.nan
+        proba_market_b = p_impl_b / s if s > 0 else np.nan
+
+        edge_a = proba_a - proba_market_a if not pd.isna(proba_market_a) else np.nan
+        edge_b = proba_b - proba_market_b if not pd.isna(proba_market_b) else np.nan
+        threshold = model_data.get("wf_strategy", {}).get("edge_threshold", 0.08)
+        ev_a = proba_a * odds_a - 1.0
+        ev_b = proba_b * odds_b - 1.0
+
+        recommendation = None
+        if not pd.isna(edge_a) and edge_a >= threshold and ev_a > 0 and (pd.isna(edge_b) or edge_a >= edge_b):
+            recommendation = {
+                "bet_on": "A",
+                "fighter": fighter_a_data.get("name", "Fighter A"),
+                "odds": odds_a,
+                "edge": edge_a,
+                "proba_model": proba_a,
+            }
+        elif not pd.isna(edge_b) and edge_b >= threshold and ev_b > 0:
+            recommendation = {
+                "bet_on": "B",
+                "fighter": fighter_b_data.get("name", "Fighter B"),
+                "odds": odds_b,
+                "edge": edge_b,
+                "proba_model": proba_b,
+            }
+
+        return {
+            "proba_a": proba_a,
+            "proba_b": proba_b,
+            "proba_market": proba_market_a,
+            "edge_a": edge_a,
+            "edge_b": edge_b,
+            "reach_diff": X.iloc[0].get("diff_reach", np.nan),
+            "age_diff": X.iloc[0].get("diff_age", np.nan),
+            "recommendation": recommendation,
+            "winner": "A" if proba_a > 0.5 else "B",
+            "confidence": "Élevée" if abs(proba_a - 0.5) > 0.15 else "Modérée",
+            "model_version_display": "Nouveau WF (value betting)",
+            "ev_a": ev_a,
+            "ev_b": ev_b,
+        }
+    except Exception as e:
+        st.error(f"Erreur prédiction walk-forward: {e}")
+        return None
+
+
+# ============================================================================
+# PRÉDICTION DE COMBAT — LightGBM Value Betting (90 features)
+# ============================================================================
+
+def build_lgbm_feature_row(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b):
+    """
+    Construit un vecteur de 90 features pour le modèle LightGBM Value Betting.
+    En live, on n'a qu'une seule cote disponible.
+    Les features des bookmakers individuels sont initialisées à la proba normalisée
+    calculée depuis les cotes saisies. Les valeurs manquantes sont imputées à la médiane.
+    """
+    feat_cols        = model_data.get("lgbm_feature_cols", [])
+    medians          = model_data.get("lgbm_feature_medians", {})
+    bk_prob_cols_A   = model_data.get("lgbm_bk_prob_cols_A", [])
+    wclass_feat_cols = model_data.get("lgbm_wclass_feat_cols", [])
+
+    if not feat_cols:
+        return None
+
+    # Initialiser toutes les features à leurs médianes (valeurs par défaut)
+    row = {f: medians.get(f, 0.0) for f in feat_cols}
+
+    # ── Features diff (A - B) ────────────────────────────────────────────────
+    def safe_diff(key_a, key_b=None):
+        va = fighter_a_data.get(key_a)
+        vb = fighter_b_data.get(key_b or key_a)
+        if va is not None and vb is not None:
+            try:
+                return float(va) - float(vb)
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    diff_pairs = [
+        ("diff_height",          "height_cm",       "height_cm"),
+        ("diff_reach",           "reach_cm",         "reach_cm"),
+        ("diff_age",             "age",              "age"),
+        ("diff_experience",      "experience",       "experience"),
+        ("diff_win_rate",        "win_rate",         "win_rate"),
+        ("diff_win_rate_3",      "win_rate_3",       "win_rate_3"),
+        ("diff_win_rate_5",      "win_rate_5",       "win_rate_5"),
+        ("diff_streak",          "streak",           "streak"),
+        ("diff_avg_sig_str_acc", "avg_sig_str_acc",  "avg_sig_str_acc"),
+        ("diff_avg_td_acc",      "avg_td_acc",       "avg_td_acc"),
+        ("diff_avg_sub_att",     "avg_sub_att",      "avg_sub_att"),
+        ("diff_avg_ctrl_secs",   "avg_ctrl_secs",    "avg_ctrl_secs"),
+        ("diff_avg_kd",          "avg_kd",           "avg_kd"),
+        ("diff_activity_12m",    "activity_12m",     "activity_12m"),
+        ("diff_days_inactive",   "days_inactive",    "days_inactive"),
+    ]
+    for feat_key, ka, kb in diff_pairs:
+        if feat_key in row:
+            v = safe_diff(ka, kb)
+            if v is not None:
+                row[feat_key] = v
+
+    # ── Features bookmaker (probabilités implicites normalisées) ─────────────
+    odds_a_c   = max(1.01, float(odds_a))
+    odds_b_c   = max(1.01, float(odds_b))
+    prob_a_raw = 1.0 / odds_a_c
+    prob_b_raw = 1.0 / odds_b_c
+    total      = prob_a_raw + prob_b_raw
+    prob_a_norm = prob_a_raw / total
+    margin_pct  = (total - 1.0) * 100.0
+
+    # Remplir chaque prob_A_<bookmaker> avec la proba normalisée (cote unique)
+    for col in bk_prob_cols_A:
+        if col in row:
+            row[col] = prob_a_norm
+
+    # Agrégats de marché
+    for k, v in [
+        ("prob_A_mean",   prob_a_norm),
+        ("prob_A_max",    prob_a_norm),
+        ("prob_A_min",    prob_a_norm),
+        ("prob_A_std",    0.0),
+        ("market_spread", 0.0),
+        ("is_favorite_A", float(prob_a_norm > 0.5)),
+        ("margin_mean",   margin_pct),
+    ]:
+        if k in row:
+            row[k] = v
+
+    # ── Weight class one-hot ─────────────────────────────────────────────────
+    weight_class = fighter_a_data.get("weight_class", "")
+    if isinstance(weight_class, str) and weight_class:
+        wc_col = "wc_" + weight_class.strip().lower()
+        for col in wclass_feat_cols:
+            if col in row:
+                row[col] = 1.0 if col == wc_col else 0.0
+
+    return pd.DataFrame([row])[feat_cols]
+
+
+def predict_fight_lgbm(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b):
+    """
+    Prédit l'issue d'un combat avec le modèle LightGBM Value Betting (90 features).
+    Retourne un dict compatible avec l'interface existante de predict_fight().
+    """
+    if not model_data.get("lgbm_model") or not model_data.get("lgbm_imputer"):
+        return None
+
+    try:
+        X_raw = build_lgbm_feature_row(
+            fighter_a_data, fighter_b_data, model_data, odds_a, odds_b
+        )
+        if X_raw is None:
+            return None
+
+        feat_cols = model_data["lgbm_feature_cols"]
+        X_imp = pd.DataFrame(
+            model_data["lgbm_imputer"].transform(X_raw),
+            columns=feat_cols
+        )
+        proba_a = float(model_data["lgbm_model"].predict_proba(X_imp)[0][1])
+        proba_b = 1.0 - proba_a
+
+        # Probabilités marché déviguées
+        p_impl_a = 1.0 / max(1.01, float(odds_a))
+        p_impl_b = 1.0 / max(1.01, float(odds_b))
+        s = p_impl_a + p_impl_b
+        proba_market_a = p_impl_a / s if s > 0 else 0.5
+        proba_market_b = 1.0 - proba_market_a
+
+        edge_a = proba_a - proba_market_a
+        edge_b = proba_b - proba_market_b
+        ev_a   = proba_a * float(odds_a) - 1.0
+        ev_b   = proba_b * float(odds_b) - 1.0
+
+        threshold = float(
+            model_data.get("lgbm_strategy", {}).get("edge_threshold", 0.04)
+        )
+        recommendation = None
+        if edge_a >= threshold and ev_a > 0 and (edge_b < threshold or edge_a >= edge_b):
+            recommendation = {
+                "bet_on": "A",
+                "fighter": fighter_a_data.get("name", "Fighter A"),
+                "odds": odds_a,
+                "edge": edge_a,
+                "proba_model": proba_a,
+            }
+        elif edge_b >= threshold and ev_b > 0:
+            recommendation = {
+                "bet_on": "B",
+                "fighter": fighter_b_data.get("name", "Fighter B"),
+                "odds": odds_b,
+                "edge": edge_b,
+                "proba_model": proba_b,
+            }
+
+        # Diff physiques pour affichage
+        reach_diff = np.nan
+        age_diff   = np.nan
+        try:
+            ra = fighter_a_data.get("reach_cm"); rb = fighter_b_data.get("reach_cm")
+            aa = fighter_a_data.get("age");      ab = fighter_b_data.get("age")
+            if ra is not None and rb is not None:
+                reach_diff = float(ra) - float(rb)
+            if aa is not None and ab is not None:
+                age_diff = float(aa) - float(ab)
+        except Exception:
+            pass
+
+        return {
+            "proba_a":    proba_a,
+            "proba_b":    proba_b,
+            "proba_market": proba_market_a,
+            "edge_a":     edge_a,
+            "edge_b":     edge_b,
+            "ev_a":       ev_a,
+            "ev_b":       ev_b,
+            "reach_diff": reach_diff,
+            "age_diff":   age_diff,
+            "recommendation": recommendation,
+            "winner":     "A" if proba_a > 0.5 else "B",
+            "confidence": "Élevée" if abs(proba_a - 0.5) > 0.15 else "Modérée",
+            "model_version_display": "LightGBM VB (90 feat.)",
+        }
+    except Exception as e:
+        st.error(f"Erreur prédiction LightGBM: {e}")
+        return None
+
 # ============================================================================
 # PRÉDICTION DE COMBAT (Nouveau modèle Market + Reach + Age)
 # ============================================================================
@@ -1786,14 +2238,26 @@ def predict_fight_with_odds(fighter_a_data, fighter_b_data, model_data, odds_a, 
         st.error(f"Erreur prédiction: {e}")
         return None
 
-def predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a=None, odds_b=None):
+def predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a=None, odds_b=None, mode="classic"):
     """
     Prédit l'issue d'un combat.
     - Si odds_a et odds_b fournis: utilise le nouveau modèle market+physique
     - Sinon: fallback sur proba Elo uniquement
     """
-    # Si cotes fournies, utiliser le nouveau modèle
+    # Si cotes fournies, utiliser le moteur sélectionné
     if odds_a is not None and odds_b is not None:
+        if mode == "walkforward":
+            wf_pred = predict_fight_walkforward_with_odds(
+                fighter_a_data, fighter_b_data, model_data, odds_a, odds_b
+            )
+            if wf_pred is not None:
+                return wf_pred
+        elif mode == "lgbm":
+            lgbm_pred = predict_fight_lgbm(
+                fighter_a_data, fighter_b_data, model_data, odds_a, odds_b
+            )
+            if lgbm_pred is not None:
+                return lgbm_pred
         return predict_fight_with_odds(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b)
     
     # Sinon, fallback sur Elo
@@ -2202,7 +2666,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
         
         st.markdown("### ⚙️ Configuration")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             strategy_name = st.selectbox(
@@ -2215,6 +2679,31 @@ def show_events_page(model_data, fighters_data, current_bankroll):
             st.info(f"📝 {strategy['description']}")
         
         with col2:
+            model_options = ["Classique (mkt+phys)"]
+            has_wf_model = model_data.get("wf_model") is not None
+            if has_wf_model:
+                model_options.append("Nouveau WF (value betting)")
+            has_lgbm_model = model_data.get("lgbm_model") is not None
+            if has_lgbm_model:
+                model_options.append("LightGBM VB (nouveau)")
+
+            prediction_engine = st.selectbox(
+                "Moteur prédictif",
+                options=model_options,
+                index=0,
+                key="prediction_engine_select",
+            )
+
+            if prediction_engine.startswith("Nouveau WF"):
+                wf_threshold = float(model_data.get("wf_strategy", {}).get("edge_threshold", 0.08))
+                st.caption(f"WF edge min recommandé: {wf_threshold:.1%} (flat betting)")
+            elif prediction_engine.startswith("LightGBM VB"):
+                lgbm_threshold = float(model_data.get("lgbm_strategy", {}).get("edge_threshold", 0.04))
+                st.caption(f"LightGBM edge min recommandé: {lgbm_threshold:.1%} (Kelly fractionnel)")
+            else:
+                st.caption("Mode Classique: sizing Kelly selon la stratégie sélectionnée.")
+
+        with col3:
             st.metric("💰 Bankroll actuelle", f"{current_bankroll:.2f} €")
         
         with st.expander("📊 Détails de la stratégie"):
@@ -2378,17 +2867,58 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     key=f"odds_b_{i}_{j}"
                                 )
                             
-                            # Prédiction avec les cotes (nouveau modèle market + physique)
-                            prediction = predict_fight(fighter_a_data, fighter_b_data, model_data, odds_a, odds_b)
+                            # Prédiction avec le moteur sélectionné
+                            if prediction_engine.startswith("Nouveau WF"):
+                                prediction_mode = "walkforward"
+                            elif prediction_engine.startswith("LightGBM VB"):
+                                prediction_mode = "lgbm"
+                            else:
+                                prediction_mode = "classic"
+                            prediction = predict_fight(
+                                fighter_a_data,
+                                fighter_b_data,
+                                model_data,
+                                odds_a,
+                                odds_b,
+                                mode=prediction_mode,
+                            )
                             
                             if prediction:
-                                # Calcul des probabilités implicites du marché
-                                proba_market_a = 1 / odds_a
-                                proba_market_b = 1 / odds_b
+                                # Probas marché pour affichage:
+                                # - Classique: probas implicites brutes (historique de l'app)
+                                # - WF: probas dévigées
+                                if prediction_mode == "walkforward":
+                                    proba_market_a = prediction.get("proba_market")
+                                    if proba_market_a is None or pd.isna(proba_market_a):
+                                        p1 = 1 / odds_a
+                                        p2 = 1 / odds_b
+                                        s = p1 + p2
+                                        proba_market_a = p1 / s if s > 0 else np.nan
+                                    proba_market_b = 1 - proba_market_a
+                                    edge_a = prediction.get("edge_a", prediction["proba_a"] - proba_market_a)
+                                    edge_b = prediction.get("edge_b", prediction["proba_b"] - proba_market_b)
+                                    model_label = prediction.get("model_version_display", "Nouveau WF (value betting)")
+                                elif prediction_mode == "lgbm":
+                                    proba_market_a = prediction.get("proba_market")
+                                    if proba_market_a is None or pd.isna(proba_market_a):
+                                        p1 = 1 / odds_a
+                                        p2 = 1 / odds_b
+                                        s = p1 + p2
+                                        proba_market_a = p1 / s if s > 0 else np.nan
+                                    proba_market_b = 1 - proba_market_a
+                                    edge_a = prediction.get("edge_a", prediction["proba_a"] - proba_market_a)
+                                    edge_b = prediction.get("edge_b", prediction["proba_b"] - proba_market_b)
+                                    model_label = prediction.get("model_version_display", "LightGBM VB")
+                                else:
+                                    proba_market_a = 1 / odds_a
+                                    proba_market_b = 1 / odds_b
+                                    edge_a = prediction["proba_a"] - proba_market_a
+                                    edge_b = prediction["proba_b"] - proba_market_b
+                                    model_label = "mkt+phys"
                                 
                                 st.markdown(f"""
                                 <div class="card">
-                                    <h5>📊 Prédiction du modèle (mkt+phys)</h5>
+                                    <h5>📊 Prédiction du modèle ({model_label})</h5>
                                     <table style="width:100%; text-align:center;">
                                         <tr>
                                             <th></th>
@@ -2407,27 +2937,76 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                         </tr>
                                         <tr>
                                             <td><b>Edge</b></td>
-                                            <td style="color: {'green' if prediction['proba_a'] - proba_market_a > 0 else 'red'};">{(prediction['proba_a'] - proba_market_a)*100:+.1f}%</td>
-                                            <td style="color: {'green' if prediction['proba_b'] - proba_market_b > 0 else 'red'};">{(prediction['proba_b'] - proba_market_b)*100:+.1f}%</td>
+                                            <td style="color: {'green' if edge_a > 0 else 'red'};">{edge_a*100:+.1f}%</td>
+                                            <td style="color: {'green' if edge_b > 0 else 'red'};">{edge_b*100:+.1f}%</td>
                                         </tr>
                                     </table>
                                     <p style="margin-top: 10px;"><small>Reach diff: {prediction.get('reach_diff', 'N/A')} cm | Age diff: {prediction.get('age_diff', 'N/A')} ans</small></p>
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
-                                stake_a = calculate_kelly_stake(
-                                    prediction['proba_a'],
-                                    odds_a,
-                                    current_bankroll,
-                                    strategy
-                                )
-                                
-                                stake_b = calculate_kelly_stake(
-                                    prediction['proba_b'],
-                                    odds_b,
-                                    current_bankroll,
-                                    strategy
-                                )
+                                if prediction_mode == "walkforward":
+                                    wf_strategy = dict(model_data.get("wf_strategy", {}))
+                                    wf_strategy["edge_threshold"] = max(
+                                        float(wf_strategy.get("edge_threshold", 0.08)),
+                                        float(strategy.get("min_edge", 0.0)),
+                                    )
+                                    stake_a = calculate_flat_stake_wf(
+                                        prediction['proba_a'],
+                                        proba_market_a,
+                                        odds_a,
+                                        current_bankroll,
+                                        wf_strategy
+                                    )
+                                    stake_b = calculate_flat_stake_wf(
+                                        prediction['proba_b'],
+                                        proba_market_b,
+                                        odds_b,
+                                        current_bankroll,
+                                        wf_strategy
+                                    )
+                                    # Optionnel: ignorer les nouveaux combattants en WF
+                                    if bool(wf_strategy.get("skip_new_fighters", True)) and has_new_fighter:
+                                        stake_a = {**stake_a, "should_bet": False, "stake": 0.0, "reason": "WF: nouveau combattant - pari ignoré"}
+                                        stake_b = {**stake_b, "should_bet": False, "stake": 0.0, "reason": "WF: nouveau combattant - pari ignoré"}
+                                elif prediction_mode == "lgbm":
+                                    lgbm_raw = model_data.get("lgbm_strategy", {})
+                                    lgbm_kelly_params = {
+                                        "kelly_fraction":   float(lgbm_raw.get("kelly_fraction", 5.0)),
+                                        "max_bet_fraction": float(lgbm_raw.get("max_bet_fraction", 0.20)),
+                                        "min_bet_pct":      float(lgbm_raw.get("min_bet_pct", 0.01)),
+                                        "min_edge":         max(
+                                                                float(lgbm_raw.get("edge_threshold", 0.04)),
+                                                                float(strategy.get("min_edge", 0.0)),
+                                                            ),
+                                        "min_confidence":   0.0,
+                                    }
+                                    stake_a = calculate_kelly_stake(
+                                        prediction['proba_a'],
+                                        odds_a,
+                                        current_bankroll,
+                                        lgbm_kelly_params
+                                    )
+                                    stake_b = calculate_kelly_stake(
+                                        prediction['proba_b'],
+                                        odds_b,
+                                        current_bankroll,
+                                        lgbm_kelly_params
+                                    )
+                                else:
+                                    stake_a = calculate_kelly_stake(
+                                        prediction['proba_a'],
+                                        odds_a,
+                                        current_bankroll,
+                                        strategy
+                                    )
+                                    
+                                    stake_b = calculate_kelly_stake(
+                                        prediction['proba_b'],
+                                        odds_b,
+                                        current_bankroll,
+                                        strategy
+                                    )
                                 
                                 # ⚠️ Warning si données bio manquantes (mais pas bloquant)
                                 has_bio_warning = False
@@ -2483,7 +3062,7 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                                 odds=best_bet['odds'],
                                                 stake=best_bet['stake_info']['stake'],
                                                 model_probability=best_bet['proba'],
-                                                kelly_fraction=strategy['kelly_fraction'],
+                                                kelly_fraction=(0 if prediction_mode == "walkforward" else (model_data.get("lgbm_strategy", {}).get("kelly_fraction", 5.0) if prediction_mode == "lgbm" else strategy['kelly_fraction'])),
                                                 edge=best_bet['stake_info']['edge'],
                                                 ev=best_bet['stake_info']['ev']
                                             )
@@ -2495,7 +3074,19 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                     else:
                                         st.info("🔒 Connectez-vous pour enregistrer ce pari")
                                 else:
-                                    st.info(f"ℹ️ Aucun pari recommandé (edge < {strategy['min_edge']:.1%} pour les deux combattants)")
+                                    if prediction_mode == "walkforward":
+                                        min_edge_msg = max(
+                                            float(model_data.get("wf_strategy", {}).get("edge_threshold", 0.08)),
+                                            float(strategy['min_edge']),
+                                        )
+                                    elif prediction_mode == "lgbm":
+                                        min_edge_msg = max(
+                                            float(model_data.get("lgbm_strategy", {}).get("edge_threshold", 0.04)),
+                                            float(strategy['min_edge']),
+                                        )
+                                    else:
+                                        min_edge_msg = float(strategy['min_edge'])
+                                    st.info(f"ℹ️ Aucun pari recommandé (edge < {min_edge_msg:.1%} pour les deux combattants)")
                                     
                                     with st.expander("Voir les détails"):
                                         st.write(f"**{fight['red_fighter']}**: Edge {stake_a['edge']:.1%}")
