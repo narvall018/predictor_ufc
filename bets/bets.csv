@@ -12,5 +12,5 @@ bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kel
 11,2026-02-21 22:03,UFC Fight Night: Strickland vs. Hernandez,Zach Reese,Michel Pereira,Zach Reese,2.48,20.34252432055776,0.4387941378793871,2.75,0.0355683314277741,0.0882094619408799,closed,loss,-20.34252432055776,-100.0
 12,2026-02-22 12:37,UFC Fight Night: Moreno vs. Kavanagh,Daniel Zellhuber,King Green,Daniel Zellhuber,1.2,73.47795706374845,0.868936207548763,2.75,0.0356028742154296,0.0427234490585155,open,,0.0,0.0
 13,2026-02-22 12:40,UFC Fight Night: Moreno vs. Kavanagh,Edgar Chairez,Felipe Bunes,Edgar Chairez,1.35,50.853832311112455,0.7790705978161687,2.75,0.038329857075428,0.0517453070518278,open,,0.0,0.0
-14,2026-02-26 19:42,UFC Fight Night: Moreno vs. Kavanagh,Marlon Vera,David Martinez,Marlon Vera,3.48,13.75159070439401,0.3391577725580594,5.0,0.0518014507189789,0.1802690485020466,open,,0.0,0.0
+14,2026-02-26 19:42,UFC Fight Night: Moreno vs. Kavanagh,Marlon Vera,David Martinez,Marlon Vera,3.48,13.75159070439401,0.3391577725580594,5.0,0.0518014507189789,0.1802690485020466,closed,void,0.0,0.0
 15,2026-02-26 19:43,UFC Fight Night: Moreno vs. Kavanagh,Cristian Quinonez,Kris Moutinho,Cristian Quinonez,1.15,59.10325244930084,0.9103146294773676,5.0,0.0407494120860633,0.0468618238989728,closed,void,0.0,0.0
