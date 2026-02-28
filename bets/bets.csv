@@ -14,3 +14,4 @@ bet_id,date,event,fighter_red,fighter_blue,pick,odds,stake,model_probability,kel
 13,2026-02-22 12:40,UFC Fight Night: Moreno vs. Kavanagh,Edgar Chairez,Felipe Bunes,Edgar Chairez,1.35,50.853832311112455,0.7790705978161687,2.75,0.038329857075428,0.0517453070518278,open,,0.0,0.0
 14,2026-02-26 19:42,UFC Fight Night: Moreno vs. Kavanagh,Marlon Vera,David Martinez,Marlon Vera,3.48,13.75159070439401,0.3391577725580594,5.0,0.0518014507189789,0.1802690485020466,closed,void,0.0,0.0
 15,2026-02-26 19:43,UFC Fight Night: Moreno vs. Kavanagh,Cristian Quinonez,Kris Moutinho,Cristian Quinonez,1.15,59.10325244930084,0.9103146294773676,5.0,0.0407494120860633,0.0468618238989728,closed,void,0.0,0.0
+16,2026-02-28 14:09,UFC Fight Night: Moreno vs. Kavanagh,Daniel Zellhuber,King Green,Daniel Zellhuber,1.26,102.34785282455353,0.8550497198921847,2.75,0.061398926241391094,0.07736264706415263,open,,0.0,0.0
