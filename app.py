@@ -312,7 +312,7 @@ LGBM_MODEL_ARTIFACT = PROC_DIR / "lgbm_value_model.pkl"
 # Sport key: mma_mixed_martial_arts
 
 # 🔐 Clé API encodée (disponible pour les utilisateurs connectés)
-_ENCODED_API_KEY = "OTU5MWZiZGZmZjM3YTA1MDAxNTFmYzA2NjQzY2YyMzI="  # Base64
+_ENCODED_API_KEY = "ZTBjY2M1ZDI2NzM2YTc4ZDI3MTI1NzAzNmE4MzEzYjc="  # Base64
 
 def _decode_api_key():
     """Décode la clé API si l'utilisateur est connecté"""
