@@ -88,12 +88,52 @@ def can_view_bankroll():
     user = get_current_user()
     return user is not None and user.get("can_view_bankroll", False)
 
+
+def can_access_update_tab():
+    """Réserve l'onglet mise à jour à narvall018 (admin) en mode unifié."""
+    user = get_current_user()
+    if not user:
+        return False
+    if _is_unified_mode():
+        return bool(user.get("is_admin")) and str(user.get("username")) == "narvall018"
+    return bool(user.get("is_admin"))
+
+
+def _is_unified_mode():
+    return bool(st.session_state.get("unified_mode"))
+
+
+def _safe_username(value):
+    cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(value).strip())
+    return cleaned or "anonymous"
+
+
 def get_user_bets_folder():
     """Retourne le dossier des paris pour l'utilisateur connecté"""
+    if _is_unified_mode():
+        explicit = st.session_state.get("unified_ufc_bets_folder")
+        if explicit:
+            base = Path(str(explicit))
+            base.mkdir(parents=True, exist_ok=True)
+            return base
+        if st.session_state.get("unified_username"):
+            username = _safe_username(st.session_state["unified_username"])
+            base = BETS_DIR / "users" / username / "ufc"
+            base.mkdir(parents=True, exist_ok=True)
+            return base
+
     user = get_current_user()
     if user:
-        return Path(user.get("bets_folder", "bets"))
-    return Path("bets")  # Par défaut
+        folder = Path(user.get("bets_folder", "bets"))
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+    BETS_DIR.mkdir(parents=True, exist_ok=True)
+    return BETS_DIR  # Par défaut
+
+
+def _github_sync_enabled():
+    return GITHUB_CONFIG.get("enabled") and not _is_unified_mode()
 
 def logout_user():
     """Déconnecte l'utilisateur"""
@@ -209,22 +249,24 @@ def load_csv_from_github(file_path, github_config):
 # CONFIGURATION
 # ============================================================================
 
-st.set_page_config(
-    page_title="UFC Betting Predictor",
-    page_icon="🥊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+if os.getenv("UFC_EMBED_MODE", "0") != "1":
+    st.set_page_config(
+        page_title="UFC Betting Predictor",
+        page_icon="🥊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 
 # Config GitHub
 GITHUB_CONFIG = get_github_config()
 
 # Chemins
-DATA_DIR = Path("data")
+APP_DIR = Path(__file__).resolve().parent
+DATA_DIR = APP_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 INTERIM_DIR = DATA_DIR / "interim"
 PROC_DIR = DATA_DIR / "processed"
-BETS_DIR = Path("bets")
+BETS_DIR = APP_DIR / "bets"
 
 for d in [DATA_DIR, RAW_DIR, INTERIM_DIR, PROC_DIR, BETS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
@@ -639,8 +681,13 @@ def id_from_url(u: str):
     """Extrait l'ID d'une URL"""
     if not isinstance(u, str) or not u:
         return None
-    m = re.search(r"/([0-9a-f]{16,})$", u.strip())
-    return m.group(1) if m else u
+    s = u.strip()
+    if re.fullmatch(r"[0-9a-f]{16,}", s):
+        return s
+    m = re.search(r"/([0-9a-f]{16,})(?:/)?(?:\\?.*)?$", s)
+    if m:
+        return m.group(1)
+    return s.rstrip("/")
 
 def dec_to_prob(dec):
     """Convertit cote décimale en probabilité"""
@@ -687,6 +734,9 @@ def get_fighter_data_with_fallback(fighter_url, fighter_name, fighters_data, mod
         normalized_name = fighter_name.lower().strip()
         if normalized_name in fighters_data:
             return fighters_data[normalized_name]
+        canonical_name = normalize_name(fighter_name)
+        if canonical_name and canonical_name in fighters_data:
+            return fighters_data[canonical_name]
     
     # Méthode 4: Valeurs par défaut
     elo = get_elo_for_fighter(fighter_id, model_data['elo_dict']) if fighter_id else BASE_ELO
@@ -698,6 +748,7 @@ def get_fighter_data_with_fallback(fighter_url, fighter_name, fighters_data, mod
     return {
         'name': fighter_name or 'Unknown',
         'fighter_id': fighter_id,
+        'is_new_fighter_fallback': True,
         'elo_global': elo,
         'elo_div': BASE_ELO,
         'reach_cm': bio.get('reach_cm'),  # ✅ Données bio pour le modèle
@@ -1601,6 +1652,7 @@ def load_fighters_data():
                     'fighter_url': fighter_url,
                     'fighter_id': fighter_id,
                     'name': fighter_name,
+                    'is_new_fighter_fallback': False,
                     # ✅ Utiliser Elo POST depuis ratings_timeseries
                     'elo_global': elo_post_dict.get(fighter_id, BASE_ELO),
                     'elo_div': fighter_data.get('elo_div_pre', BASE_ELO) if 'elo_div_pre' in fighter_data else BASE_ELO,
@@ -1627,6 +1679,9 @@ def load_fighters_data():
                 if fighter_name and fighter_name != 'Unknown':
                     normalized_name = fighter_name.lower().strip()
                     fighters[normalized_name] = data_entry
+                    canonical_name = normalize_name(fighter_name)
+                    if canonical_name:
+                        fighters[canonical_name] = data_entry
                     
         except Exception as e:
             st.warning(f"⚠️ Erreur chargement combattants: {e}")
@@ -2340,10 +2395,15 @@ def extract_fights_from_event(event_url):
 
 def init_bankroll():
     """Initialise la bankroll (avec support GitHub pour Streamlit Cloud)"""
-    bankroll_file = BETS_DIR / "bankroll.csv"
+    bets_dir = get_user_bets_folder()
+    bankroll_file = bets_dir / "bankroll.csv"
+    github_bankroll_path = "bets/bankroll.csv"
+    user = get_current_user()
+    if user and user.get("bets_folder"):
+        github_bankroll_path = f"{str(user['bets_folder']).strip('/')}/bankroll.csv"
     
-    if GITHUB_CONFIG.get("enabled"):
-        df, sha = load_csv_from_github("bets/bankroll.csv", GITHUB_CONFIG)
+    if _github_sync_enabled():
+        df, sha = load_csv_from_github(github_bankroll_path, GITHUB_CONFIG)
         if df is not None and not df.empty:
             df.to_csv(bankroll_file, index=False)
             return float(df.iloc[-1]["amount"])
@@ -2361,19 +2421,24 @@ def init_bankroll():
     })
     df.to_csv(bankroll_file, index=False)
     
-    if GITHUB_CONFIG.get("enabled"):
-        save_file_to_github("bets/bankroll.csv", df.to_csv(index=False), 
+    if _github_sync_enabled():
+        save_file_to_github(github_bankroll_path, df.to_csv(index=False), 
                            "Init bankroll", GITHUB_CONFIG)
     
     return 1000.0
 
 def update_bankroll(new_amount, action="update", note=""):
     """Met a jour la bankroll (avec sync GitHub)"""
-    bankroll_file = BETS_DIR / "bankroll.csv"
+    bets_dir = get_user_bets_folder()
+    bankroll_file = bets_dir / "bankroll.csv"
+    github_bankroll_path = "bets/bankroll.csv"
+    user = get_current_user()
+    if user and user.get("bets_folder"):
+        github_bankroll_path = f"{str(user['bets_folder']).strip('/')}/bankroll.csv"
     sha = None
     
-    if GITHUB_CONFIG.get("enabled"):
-        df, sha = load_csv_from_github("bets/bankroll.csv", GITHUB_CONFIG)
+    if _github_sync_enabled():
+        df, sha = load_csv_from_github(github_bankroll_path, GITHUB_CONFIG)
         if df is None:
             df = pd.DataFrame(columns=["date", "amount", "action", "note"])
     elif bankroll_file.exists():
@@ -2391,8 +2456,8 @@ def update_bankroll(new_amount, action="update", note=""):
     df = pd.concat([df, new_entry], ignore_index=True)
     df.to_csv(bankroll_file, index=False)
     
-    if GITHUB_CONFIG.get("enabled"):
-        save_file_to_github("bets/bankroll.csv", df.to_csv(index=False),
+    if _github_sync_enabled():
+        save_file_to_github(github_bankroll_path, df.to_csv(index=False),
                            f"Update bankroll: {action}", GITHUB_CONFIG, sha)
     
     return new_amount
@@ -2400,11 +2465,16 @@ def update_bankroll(new_amount, action="update", note=""):
 def add_bet(event_name, fighter_red, fighter_blue, pick, odds, stake, 
             model_probability, kelly_fraction, edge, ev):
     """Ajoute un pari (avec sync GitHub)"""
-    bets_file = BETS_DIR / "bets.csv"
+    bets_dir = get_user_bets_folder()
+    bets_file = bets_dir / "bets.csv"
+    github_bets_path = "bets/bets.csv"
+    user = get_current_user()
+    if user and user.get("bets_folder"):
+        github_bets_path = f"{str(user['bets_folder']).strip('/')}/bets.csv"
     sha = None
     
-    if GITHUB_CONFIG.get("enabled"):
-        df, sha = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+    if _github_sync_enabled():
+        df, sha = load_csv_from_github(github_bets_path, GITHUB_CONFIG)
         if df is not None and not df.empty:
             next_id = int(df["bet_id"].max()) + 1
         else:
@@ -2447,19 +2517,24 @@ def add_bet(event_name, fighter_red, fighter_blue, pick, odds, stake,
     df = pd.concat([df, new_bet], ignore_index=True)
     df.to_csv(bets_file, index=False)
     
-    if GITHUB_CONFIG.get("enabled"):
-        save_file_to_github("bets/bets.csv", df.to_csv(index=False),
+    if _github_sync_enabled():
+        save_file_to_github(github_bets_path, df.to_csv(index=False),
                            f"Add bet: {pick} @ {odds}", GITHUB_CONFIG, sha)
     
     return True
 
 def get_open_bets():
     """Récupère les paris ouverts (avec sync GitHub)"""
-    bets_file = BETS_DIR / "bets.csv"
+    bets_dir = get_user_bets_folder()
+    bets_file = bets_dir / "bets.csv"
+    github_bets_path = "bets/bets.csv"
+    user = get_current_user()
+    if user and user.get("bets_folder"):
+        github_bets_path = f"{str(user['bets_folder']).strip('/')}/bets.csv"
     
     # ✅ Priorité GitHub sur Streamlit Cloud
-    if GITHUB_CONFIG.get("enabled"):
-        df, sha = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+    if _github_sync_enabled():
+        df, sha = load_csv_from_github(github_bets_path, GITHUB_CONFIG)
         if df is not None:
             return df[df["status"] == "open"]
     
@@ -2471,12 +2546,17 @@ def get_open_bets():
 
 def close_bet(bet_id, result):
     """Clôture un pari (avec sync GitHub)"""
-    bets_file = BETS_DIR / "bets.csv"
+    bets_dir = get_user_bets_folder()
+    bets_file = bets_dir / "bets.csv"
+    github_bets_path = "bets/bets.csv"
+    user = get_current_user()
+    if user and user.get("bets_folder"):
+        github_bets_path = f"{str(user['bets_folder']).strip('/')}/bets.csv"
     sha = None
     
     # ✅ Charger depuis GitHub si activé
-    if GITHUB_CONFIG.get("enabled"):
-        df, sha = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+    if _github_sync_enabled():
+        df, sha = load_csv_from_github(github_bets_path, GITHUB_CONFIG)
         if df is None:
             return False
     elif bets_file.exists():
@@ -2509,8 +2589,8 @@ def close_bet(bet_id, result):
     df.to_csv(bets_file, index=False)
     
     # ✅ Sync GitHub
-    if GITHUB_CONFIG.get("enabled"):
-        save_file_to_github("bets/bets.csv", df.to_csv(index=False),
+    if _github_sync_enabled():
+        save_file_to_github(github_bets_path, df.to_csv(index=False),
                            f"Close bet #{bet_id}: {result}", GITHUB_CONFIG, sha)
     
     return True
@@ -2758,11 +2838,12 @@ def show_events_page(model_data, fighters_data, current_bankroll):
                                 model_data
                             )
                             
-                            # ✅ Détecter les nouveaux combattants (Elo = 1500)
-                            elo_a = fighter_a_data.get('elo_global', BASE_ELO)
-                            elo_b = fighter_b_data.get('elo_global', BASE_ELO)
-                            is_new_fighter_a = abs(elo_a - BASE_ELO) < 1  # Elo ~= 1500
-                            is_new_fighter_b = abs(elo_b - BASE_ELO) < 1
+                            # ✅ Détecter les nouveaux combattants via fallback explicite
+                            # (plus fiable que "Elo == 1500", qui génère des faux positifs).
+                            elo_a = float(fighter_a_data.get('elo_global', BASE_ELO) or BASE_ELO)
+                            elo_b = float(fighter_b_data.get('elo_global', BASE_ELO) or BASE_ELO)
+                            is_new_fighter_a = bool(fighter_a_data.get('is_new_fighter_fallback', False))
+                            is_new_fighter_b = bool(fighter_b_data.get('is_new_fighter_fallback', False))
                             has_new_fighter = is_new_fighter_a or is_new_fighter_b
                             
                             fight_cols = st.columns(2)
@@ -3242,11 +3323,15 @@ def show_bankroll_page(current_bankroll):
     
     # ✅ Charger depuis GitHub si activé
     all_bets = None
-    if GITHUB_CONFIG.get("enabled"):
-        all_bets, _ = load_csv_from_github("bets/bets.csv", GITHUB_CONFIG)
+    github_bets_path = "bets/bets.csv"
+    user = get_current_user()
+    if user and user.get("bets_folder"):
+        github_bets_path = f"{str(user['bets_folder']).strip('/')}/bets.csv"
+    if _github_sync_enabled():
+        all_bets, _ = load_csv_from_github(github_bets_path, GITHUB_CONFIG)
     
     if all_bets is None:
-        bets_file = BETS_DIR / "bets.csv"
+        bets_file = get_user_bets_folder() / "bets.csv"
         if bets_file.exists():
             all_bets = pd.read_csv(bets_file)
     
@@ -3784,28 +3869,38 @@ def main():
     
     # Définir les onglets selon le statut de connexion
     if is_logged_in() and can_view_bankroll():
-        tabs = st.tabs([
+        tab_labels = [
             "🏠 Accueil",
             "📅 Événements à venir",
             "💰 Gestion Bankroll",
             "🏆 Classement Elo",
-            "🔄 Mise à jour"
-        ])
-        
-        with tabs[0]:
+        ]
+        show_update_tab = can_access_update_tab()
+        if show_update_tab:
+            tab_labels.append("🔄 Mise à jour")
+
+        tabs = st.tabs(tab_labels)
+        tab_idx = 0
+
+        with tabs[tab_idx]:
             show_home_page(model_data)
-        
-        with tabs[1]:
+        tab_idx += 1
+
+        with tabs[tab_idx]:
             show_events_page(model_data, fighters_data, current_bankroll)
-        
-        with tabs[2]:
+        tab_idx += 1
+
+        with tabs[tab_idx]:
             show_bankroll_page(current_bankroll)
-        
-        with tabs[3]:
+        tab_idx += 1
+
+        with tabs[tab_idx]:
             show_rankings_page(model_data)
-        
-        with tabs[4]:
-            show_stats_update_page()
+        tab_idx += 1
+
+        if show_update_tab:
+            with tabs[tab_idx]:
+                show_stats_update_page()
     else:
         # Mode visiteur - accès limité
         tabs = st.tabs([
